@@ -1,0 +1,3 @@
+﻿export async function sha256(value: string): Promise<string> { const bytes=new TextEncoder().encode(value); const hash=await crypto.subtle.digest('SHA-256',bytes); return [...new Uint8Array(hash)].map(byte=>byte.toString(16).padStart(2,'0')).join(''); }
+export async function authenticate(username:string,password:string){const user=import.meta.env.VITE_ADMIN_USERNAME_HASH as string|undefined;const pass=import.meta.env.VITE_ADMIN_PASSWORD_HASH as string|undefined;if(!user||!pass)return username==='demo'&&password==='demo';return await sha256(username)===user&&await sha256(password)===pass;}
+export const isAuthenticated=()=>sessionStorage.getItem('crm-auth')==='1'; export const signOut=()=>sessionStorage.removeItem('crm-auth');
