@@ -1,19 +1,232 @@
-import {Navigate,NavLink,Route,Routes,useNavigate,useParams} from 'react-router-dom';
-import {BarChart3,BriefcaseBusiness,CheckSquare,ContactRound,Edit3,LogOut,Plus,Search} from 'lucide-react';
+import {Navigate,NavLink,Route,Routes,useNavigate,useParams,useSearchParams} from 'react-router-dom';
+import {BarChart3,BriefcaseBusiness,CheckSquare,ContactRound,Edit3,LogOut,Plus,Search,X} from 'lucide-react';
 import {CrmProvider,useCrm} from './context/CrmContext';
-import {authenticate,isAuthenticated} from './services/auth';
-import {useEffect,useState,type DragEvent,type ReactNode} from 'react';
+import {authenticate,getSession,signOut,startSession} from './services/auth';
+import {useEffect,useState,type DragEvent,type FormEvent,type ReactNode} from 'react';
 
 const money=(n:number)=>new Intl.NumberFormat('es-AR',{style:'currency',currency:'ARS',maximumFractionDigits:0}).format(n);
+const todayLabel=()=>new Intl.DateTimeFormat('es-AR',{weekday:'long',day:'numeric',month:'long'}).format(new Date()).toUpperCase();
+const tomorrow=()=>new Date(Date.now()+86400000).toISOString().slice(0,10);
 
-function Shell({children}:{children:ReactNode}){const {tenant}=useCrm();const nav=[['dashboard','Resumen',BarChart3],['pipeline','Pipeline',BriefcaseBusiness],['contacts','Contactos',ContactRound],['tasks','Tareas',CheckSquare]] as const;return <div className="app"><aside><div className="brand"><span>✦</span> Gestor Asistente Trabajo</div><p className="tenant">ESPACIO DE TRABAJO<br/><b>{tenant}</b></p><nav>{nav.map(([to,label,Icon])=><NavLink key={to} to={`/t/${tenant}/${to}`} className={({isActive})=>isActive?'active':''}><Icon size={18}/>{label}</NavLink>)}</nav><div className="aside-bottom"><div className="avatar">VG</div><div><b>Vos</b><small>Administrador</small></div><LogOut size={17}/></div></aside><main><header><div><span className="eyebrow">MARTES, 11 DE AGOSTO</span><h1>Buen dia, vos</h1></div><button className="primary"><Plus size={17}/> Nuevo negocio</button></header>{children}</main></div>}
-function Dashboard(){const {contacts,deals,tasks,stages,tenant}=useCrm();return <><div className="stats"><Stat label="Negocios activos" value={String(deals.filter(d=>stages.find(s=>s.id===d.stageId)?.name!=='Perdido').length)} note="en tu pipeline"/><Stat label="Valor del pipeline" value={money(deals.reduce((a,d)=>a+d.value,0))} note="valor total"/><Stat label="Contactos" value={String(contacts.length)} note="en tu agenda"/><Stat label="Tareas pendientes" value={String(tasks.filter(t=>!t.done).length)} note="para esta semana"/></div><div className="grid-2"><section className="panel"><div className="panel-title"><div><span className="eyebrow">OPORTUNIDADES</span><h2>Tu pipeline</h2></div><NavLink to={`/t/${tenant}/pipeline`} className="link">Ver todo →</NavLink></div>{stages.slice(0,4).map(s=><div className="stage-row" key={s.id}><span className="dot" style={{background:s.color}}/><span>{s.name}</span><b>{deals.filter(d=>d.stageId===s.id).length}</b><em>{money(deals.filter(d=>d.stageId===s.id).reduce((a,d)=>a+d.value,0))}</em></div>)}</section><section className="panel"><div className="panel-title"><div><span className="eyebrow">PROXIMOS PASOS</span><h2>Tus tareas</h2></div><NavLink to={`/t/${tenant}/tasks`} className="link">Ver todo →</NavLink></div><TaskRows limit={4}/></section></div></>}
+function Empty({children}:{children:ReactNode}){return <div className="empty">{children}</div>}
+
+function Shell({children}:{children:ReactNode}){
+  const {tenant,persistenceError}=useCrm();
+  const navigate=useNavigate();
+  const session=getSession();
+  const nav=[['dashboard','Resumen',BarChart3],['pipeline','Pipeline',BriefcaseBusiness],['contacts','Contactos',ContactRound],['tasks','Tareas',CheckSquare]] as const;
+  const name=session?.name??'Vos';
+  const initials=name.split(' ').map(part=>part[0]).join('').slice(0,2).toUpperCase();
+  return <div className="app">
+    <aside>
+      <div className="brand"><span>✦</span> GATRIVI CRM</div>
+      <p className="tenant">ESPACIO DE TRABAJO<br/><b>{tenant}</b></p>
+      <nav>{nav.map(([to,label,Icon])=><NavLink key={to} to={`/t/${tenant}/${to}`} className={({isActive})=>isActive?'active':''}><Icon size={18}/>{label}</NavLink>)}</nav>
+      <div className="aside-bottom">
+        <div className="avatar">{initials}</div>
+        <div><b>{name}</b><small>Equipo comercial</small></div>
+        <button className="logout-button" type="button" title="Cerrar sesión" onClick={()=>{signOut();navigate('/login',{replace:true})}}><LogOut size={17}/></button>
+      </div>
+    </aside>
+    <main>
+      <header>
+        <div><span className="eyebrow">{todayLabel()}</span><h1>Buen día, {name}</h1></div>
+        <button className="primary" onClick={()=>navigate(`/t/${tenant}/pipeline?new=1`)}><Plus size={17}/> Nuevo negocio</button>
+      </header>
+      {persistenceError&&<div className="warning">{persistenceError}</div>}
+      {children}
+    </main>
+  </div>
+}
+
+function Dashboard(){
+  const {contacts,deals,tasks,stages,tenant}=useCrm();
+  return <>
+    <div className="stats">
+      <Stat label="Negocios activos" value={String(deals.filter(deal=>stages.find(stage=>stage.id===deal.stageId)?.name!=='Perdido').length)} note="en tu pipeline"/>
+      <Stat label="Valor del pipeline" value={money(deals.reduce((total,deal)=>total+deal.value,0))} note="valor total"/>
+      <Stat label="Contactos" value={String(contacts.length)} note="en tu agenda"/>
+      <Stat label="Tareas pendientes" value={String(tasks.filter(task=>!task.done).length)} note="para seguir"/>
+    </div>
+    <div className="grid-2">
+      <section className="panel">
+        <div className="panel-title"><div><span className="eyebrow">OPORTUNIDADES</span><h2>Tu pipeline</h2></div><NavLink to={`/t/${tenant}/pipeline`} className="link">Ver todo →</NavLink></div>
+        {stages.length?stages.slice(0,4).map(stage=><div className="stage-row" key={stage.id}><span className="dot" style={{background:stage.color}}/><span>{stage.name}</span><b>{deals.filter(deal=>deal.stageId===stage.id).length}</b><em>{money(deals.filter(deal=>deal.stageId===stage.id).reduce((total,deal)=>total+deal.value,0))}</em></div>):<Empty>Sin etapas todavía.</Empty>}
+      </section>
+      <section className="panel">
+        <div className="panel-title"><div><span className="eyebrow">PRÓXIMOS PASOS</span><h2>Tus tareas</h2></div><NavLink to={`/t/${tenant}/tasks`} className="link">Ver todo →</NavLink></div>
+        <TaskRows limit={4}/>
+      </section>
+    </div>
+  </>
+}
+
 function Stat({label,value,note}:{label:string;value:string;note:string}){return <div className="stat"><span>{label}</span><strong>{value}</strong><small>{note}</small></div>}
-function TaskRows({limit}:{limit:number}){const {tasks,toggleTask}=useCrm();return <div>{tasks.filter(t=>!t.done).slice(0,limit).map(t=><label className="task" key={t.id}><input type="checkbox" checked={t.done} onChange={()=>toggleTask(t.id)}/><span>{t.title}</span><small>{t.dueDate}</small></label>)}</div>}
-function Pipeline(){const {deals,stages,contacts,moveDeal,updateStage}=useCrm();const [dragged,setDragged]=useState('');const [editingStageId,setEditingStageId]=useState('');const [draftName,setDraftName]=useState('');const [hoverStageId,setHoverStageId]=useState('');useEffect(()=>{if(editingStageId){setDraftName(stages.find(s=>s.id===editingStageId)?.name??'')}},[editingStageId,stages]);const startDrag=(e:DragEvent<HTMLElement>,dealId:string)=>{setDragged(dealId);e.dataTransfer.effectAllowed='move';e.dataTransfer.setData('text/plain',dealId)};const dropToStage=(stageId:string)=>{if(dragged)moveDeal(dragged,stageId);setDragged('');setHoverStageId('')};const saveStage=()=>{if(editingStageId&&draftName.trim())updateStage(editingStageId,draftName.trim());setEditingStageId('')};return <section className="panel wide"><div className="panel-title"><div><span className="eyebrow">GESTION COMERCIAL</span><h2>Pipeline de ventas</h2></div><button className="secondary"><Plus size={16}/> Agregar negocio</button></div><div className="kanban">{stages.map(s=>{const items=deals.filter(d=>d.stageId===s.id);const editing=editingStageId===s.id;return <div className={`column ${hoverStageId===s.id?'drop-active':''}`} key={s.id} onDragOver={e=>{e.preventDefault();setHoverStageId(s.id)}} onDragLeave={()=>setHoverStageId(curr=>curr===s.id?'':curr)} onDrop={e=>{e.preventDefault();dropToStage(s.id)}}><div className="column-head"><span><i className="dot" style={{background:s.color}}/> {editing?<input className="stage-input" value={draftName} onChange={e=>setDraftName(e.target.value)} onKeyDown={e=>{if(e.key==='Enter')saveStage();if(e.key==='Escape')setEditingStageId('')}} autoFocus/>:<>{s.name}</>} </span><div className="stage-actions"><b>{items.length}</b><button className="icon-button" type="button" onClick={()=>editing?saveStage():(setEditingStageId(s.id))}>{editing?'Guardar':<Edit3 size={14}/>}</button></div></div>{items.map(d=><article draggable onDragStart={e=>startDrag(e,d.id)} onDragEnd={()=>setDragged('')} className={`deal ${dragged===d.id?'dragging':''}`} key={d.id}><b>{d.title}</b><p>{contacts.find(c=>c.id===d.contactId)?.name}</p><strong>{money(d.value)}</strong></article>)}<div className="drop">{hoverStageId===s.id?'Soltar aca':'Arrastrar aca'}</div></div>})}</div></section>}
-function Contacts(){const {contacts,deals,tasks,tenant}=useCrm();const [q,setQ]=useState('');const filtered=contacts.filter(c=>(c.name+c.company).toLowerCase().includes(q.toLowerCase()));return <section className="panel wide"><div className="panel-title"><div><span className="eyebrow">AGENDA</span><h2>Contactos</h2></div><div className="search"><Search size={17}/><input placeholder="Buscar contacto..." value={q} onChange={e=>setQ(e.target.value)}/></div></div><div className="contact-list">{filtered.map(c=><article className="contact" key={c.id}><div className="avatar large">{c.name.split(' ').map(x=>x[0]).join('').slice(0,2)}</div><div><b>{c.name}</b><p>{c.company} · {c.email}</p><small>{deals.filter(d=>d.contactId===c.id).length} negocios · {tasks.filter(t=>t.contactId===c.id&&!t.done).length} tareas pendientes</small></div><NavLink className="link" to={`/t/${tenant}/contacts/${c.id}`}>Ver detalle →</NavLink></article>)}</div></section>}
-function ContactDetail(){const {id,tenant}=useParams();const {contacts,deals,tasks}=useCrm();const c=contacts.find(x=>x.id===id);if(!c)return <p>Contacto no encontrado.</p>;return <section className="panel wide detail"><NavLink className="link" to={`/t/${tenant}/contacts`}>← Volver a contactos</NavLink><div className="detail-head"><div className="avatar large">{c.name.split(' ').map(x=>x[0]).join('').slice(0,2)}</div><div><span className="eyebrow">CONTACTO</span><h2>{c.name}</h2><p>{c.company} · {c.email} · {c.phone}</p></div></div><p className="note">{c.notes}</p><h3>Negocios vinculados</h3>{deals.filter(d=>d.contactId===c.id).map(d=><div className="stage-row" key={d.id}><span>{d.title}</span><b>{money(d.value)}</b></div>)}<h3>Tareas vinculadas</h3>{tasks.filter(t=>t.contactId===c.id).map(t=><div className="stage-row" key={t.id}><span>{t.title}</span><b>{t.done?'Lista':'Pendiente'}</b></div>)}</section>}
-function Tasks(){const {tasks,toggleTask}=useCrm();const [filter,setFilter]=useState<'all'|'pending'|'done'>('pending');return <section className="panel wide"><div className="panel-title"><div><span className="eyebrow">ORGANIZACION</span><h2>Tareas</h2></div><div className="tabs">{(['pending','done','all'] as const).map(x=><button className={filter===x?'selected':''} onClick={()=>setFilter(x)} key={x}>{x==='pending'?'Pendientes':x==='done'?'Hechas':'Todas'}</button>)}</div></div>{tasks.filter(t=>filter==='all'||filter==='done'&&t.done||filter==='pending'&&!t.done).map(t=><label className="task full" key={t.id}><input type="checkbox" checked={t.done} onChange={()=>toggleTask(t.id)}/><span className={t.done?'completed':''}>{t.title}</span><small>{t.dueDate}</small></label>)}</section>}
-function Login(){const nav=useNavigate();const [username,setUsername]=useState('demo');const [password,setPassword]=useState('demo');const [error,setError]=useState('');return <div className="login"><div className="login-card"><div className="brand"><span>✦</span> Gestor Asistente Trabajo</div><h1>Entra a tu espacio</h1><p>Gestiona tus contactos, negocios y tareas en un solo lugar.</p><input className="login-input" placeholder="Usuario" value={username} onChange={e=>setUsername(e.target.value)}/><input className="login-input" type="password" placeholder="Contraseña" value={password} onChange={e=>setPassword(e.target.value)}/>{error&&<p className="error">{error}</p>}<button className="primary full-button" onClick={async()=>{if(await authenticate(username,password)){sessionStorage.setItem('crm-auth','1');nav('/t/demo/dashboard')}else setError('Usuario o Contraseña incorrectos.')}}>Entrar</button></div></div>}
-function TenantApp(){const {slug='demo'}=useParams();if(!isAuthenticated())return <Navigate to="/login" replace/>;return <CrmProvider tenant={slug}><Shell><Routes><Route path="dashboard" element={<Dashboard/>}/><Route path="pipeline" element={<Pipeline/>}/><Route path="contacts" element={<Contacts/>}/><Route path="contacts/:id" element={<ContactDetail/>}/><Route path="tasks" element={<Tasks/>}/></Routes></Shell></CrmProvider>}
-export default function App(){return <Routes><Route path="/login" element={<Login/>}/><Route path="/t/:slug/*" element={<TenantApp/>}/><Route path="*" element={<Navigate to="/t/demo/dashboard" replace/>}/></Routes>}
+
+function TaskRows({limit}:{limit:number}){
+  const {tasks,toggleTask}=useCrm();
+  const pending=tasks.filter(task=>!task.done).slice(0,limit);
+  if(!pending.length)return <Empty>No tenés tareas pendientes.</Empty>;
+  return <div>{pending.map(task=><label className="task" key={task.id}><input type="checkbox" checked={task.done} onChange={()=>toggleTask(task.id)}/><span>{task.title}</span><small>{task.dueDate}</small></label>)}</div>;
+}
+
+function Pipeline(){
+  const {deals,stages,contacts,moveDeal,updateStage}=useCrm();
+  const [params,setParams]=useSearchParams();
+  const [dragged,setDragged]=useState('');
+  const [editingStageId,setEditingStageId]=useState('');
+  const [draftName,setDraftName]=useState('');
+  const [hoverStageId,setHoverStageId]=useState('');
+  const modalOpen=params.get('new')==='1';
+
+  useEffect(()=>{if(editingStageId)setDraftName(stages.find(stage=>stage.id===editingStageId)?.name??'')},[editingStageId,stages]);
+  const openModal=()=>{const next=new URLSearchParams(params);next.set('new','1');setParams(next)};
+  const closeModal=()=>{const next=new URLSearchParams(params);next.delete('new');setParams(next,{replace:true})};
+  const startDrag=(event:DragEvent<HTMLElement>,dealId:string)=>{setDragged(dealId);event.dataTransfer.effectAllowed='move';event.dataTransfer.setData('text/plain',dealId)};
+  const dropToStage=(stageId:string)=>{if(dragged)moveDeal(dragged,stageId);setDragged('');setHoverStageId('')};
+  const saveStage=()=>{if(editingStageId&&draftName.trim())updateStage(editingStageId,draftName.trim());setEditingStageId('')};
+
+  return <>
+    <section className="panel wide">
+      <div className="panel-title"><div><span className="eyebrow">GESTIÓN COMERCIAL</span><h2>Pipeline de ventas</h2></div><button className="secondary" onClick={openModal}><Plus size={16}/> Agregar negocio</button></div>
+      <div className="kanban">{stages.map(stage=>{
+        const items=deals.filter(deal=>deal.stageId===stage.id);
+        const editing=editingStageId===stage.id;
+        return <div className={`column ${hoverStageId===stage.id?'drop-active':''}`} key={stage.id} onDragOver={event=>{event.preventDefault();setHoverStageId(stage.id)}} onDragLeave={()=>setHoverStageId(current=>current===stage.id?'':current)} onDrop={event=>{event.preventDefault();dropToStage(stage.id)}}>
+          <div className="column-head"><span><i className="dot" style={{background:stage.color}}/> {editing?<input className="stage-input" value={draftName} onChange={event=>setDraftName(event.target.value)} onKeyDown={event=>{if(event.key==='Enter')saveStage();if(event.key==='Escape')setEditingStageId('')}} autoFocus/>:<>{stage.name}</>}</span><div className="stage-actions"><b>{items.length}</b><button className="icon-button" type="button" onClick={()=>editing?saveStage():setEditingStageId(stage.id)}>{editing?'Guardar':<Edit3 size={14}/>}</button></div></div>
+          {items.map(deal=><article draggable onDragStart={event=>startDrag(event,deal.id)} onDragEnd={()=>setDragged('')} className={`deal ${dragged===deal.id?'dragging':''}`} key={deal.id}><b>{deal.title}</b><p>{contacts.find(contact=>contact.id===deal.contactId)?.name??'Sin contacto'}</p><strong>{money(deal.value)}</strong></article>)}
+          <div className="drop">{hoverStageId===stage.id?'Soltar acá':items.length?'Arrastrar acá':'Sin negocios'}</div>
+        </div>
+      })}</div>
+    </section>
+    <QuickLeadModal open={modalOpen} onClose={closeModal}/>
+  </>
+}
+
+function QuickLeadModal({open,onClose}:{open:boolean;onClose:()=>void}){
+  const {addLead}=useCrm();
+  const [name,setName]=useState('');
+  const [company,setCompany]=useState('');
+  const [phone,setPhone]=useState('');
+  const [email,setEmail]=useState('');
+  const [dealTitle,setDealTitle]=useState('Nuevo prospecto');
+  const [value,setValue]=useState('');
+  if(!open)return null;
+  const submit=(event:FormEvent)=>{
+    event.preventDefault();
+    if(!name.trim()||!dealTitle.trim())return;
+    addLead({name,company,phone,email,dealTitle,value:Number(value)||0});
+    setName('');setCompany('');setPhone('');setEmail('');setDealTitle('Nuevo prospecto');setValue('');
+    onClose();
+  };
+  return <div className="modal-backdrop" onMouseDown={event=>{if(event.target===event.currentTarget)onClose()}}>
+    <form className="modal" onSubmit={submit}>
+      <div className="modal-head"><div><span className="eyebrow">ALTA RÁPIDA</span><h2>Nuevo negocio</h2></div><button className="icon-button" type="button" onClick={onClose}><X size={16}/></button></div>
+      <label>Contacto<input autoFocus value={name} onChange={event=>setName(event.target.value)} placeholder="Nombre y apellido" required/></label>
+      <div className="form-grid"><label>Empresa<input value={company} onChange={event=>setCompany(event.target.value)} placeholder="Opcional"/></label><label>Teléfono<input value={phone} onChange={event=>setPhone(event.target.value)} placeholder="11..."/></label></div>
+      <label>Email<input type="email" value={email} onChange={event=>setEmail(event.target.value)} placeholder="Opcional"/></label>
+      <div className="form-grid"><label>Negocio<input value={dealTitle} onChange={event=>setDealTitle(event.target.value)} required/></label><label>Valor estimado<input type="number" min="0" step="1000" value={value} onChange={event=>setValue(event.target.value)} placeholder="0"/></label></div>
+      <div className="modal-actions"><button type="button" className="ghost" onClick={onClose}>Cancelar</button><button className="primary" type="submit">Guardar negocio</button></div>
+    </form>
+  </div>
+}
+
+function Contacts(){
+  const {contacts,deals,tasks,tenant}=useCrm();
+  const [q,setQ]=useState('');
+  const filtered=contacts.filter(contact=>(contact.name+contact.company+contact.email+contact.phone).toLowerCase().includes(q.toLowerCase()));
+  return <section className="panel wide">
+    <div className="panel-title"><div><span className="eyebrow">AGENDA</span><h2>Contactos</h2></div><div className="search"><Search size={17}/><input placeholder="Buscar contacto..." value={q} onChange={event=>setQ(event.target.value)}/></div></div>
+    {!contacts.length?<Empty>Sin contactos. Cargá tu primer negocio desde el botón superior.</Empty>:!filtered.length?<Empty>No hay resultados para “{q}”.</Empty>:<div className="contact-list">{filtered.map(contact=><article className="contact" key={contact.id}><div className="avatar large">{contact.name.split(' ').map(part=>part[0]).join('').slice(0,2)}</div><div><b>{contact.name}</b><p>{contact.company||'Sin empresa'}{contact.email?` · ${contact.email}`:''}</p><small>{deals.filter(deal=>deal.contactId===contact.id).length} negocios · {tasks.filter(task=>task.contactId===contact.id&&!task.done).length} tareas pendientes</small></div><NavLink className="link" to={`/t/${tenant}/contacts/${contact.id}`}>Ver detalle →</NavLink></article>)}</div>}
+  </section>
+}
+
+function ContactDetail(){
+  const {id,tenant}=useParams();
+  const {contacts,deals,tasks}=useCrm();
+  const contact=contacts.find(item=>item.id===id);
+  if(!contact)return <section className="panel"><Empty>Contacto no encontrado.</Empty></section>;
+  const linkedDeals=deals.filter(deal=>deal.contactId===contact.id);
+  const linkedTasks=tasks.filter(task=>task.contactId===contact.id);
+  return <section className="panel wide detail">
+    <NavLink className="link" to={`/t/${tenant}/contacts`}>← Volver a contactos</NavLink>
+    <div className="detail-head"><div className="avatar large">{contact.name.split(' ').map(part=>part[0]).join('').slice(0,2)}</div><div><span className="eyebrow">CONTACTO</span><h2>{contact.name}</h2><p>{contact.company||'Sin empresa'}{contact.email?` · ${contact.email}`:''}{contact.phone?` · ${contact.phone}`:''}</p></div></div>
+    <p className="note">{contact.notes||'Sin notas.'}</p>
+    <h3>Negocios vinculados</h3>{linkedDeals.length?linkedDeals.map(deal=><div className="stage-row" key={deal.id}><span>{deal.title}</span><b>{money(deal.value)}</b></div>):<Empty>Sin negocios vinculados.</Empty>}
+    <h3>Tareas vinculadas</h3>{linkedTasks.length?linkedTasks.map(task=><div className="stage-row" key={task.id}><span>{task.title}</span><b>{task.done?'Lista':'Pendiente'}</b></div>):<Empty>Sin tareas vinculadas.</Empty>}
+  </section>
+}
+
+function Tasks(){
+  const {tasks,toggleTask,contacts}=useCrm();
+  const [filter,setFilter]=useState<'all'|'pending'|'done'>('pending');
+  const [adding,setAdding]=useState(false);
+  const visible=tasks.filter(task=>filter==='all'||filter==='done'&&task.done||filter==='pending'&&!task.done);
+  return <>
+    <section className="panel wide">
+      <div className="panel-title"><div><span className="eyebrow">ORGANIZACIÓN</span><h2>Tareas</h2></div><div className="panel-actions"><div className="tabs">{(['pending','done','all'] as const).map(item=><button className={filter===item?'selected':''} onClick={()=>setFilter(item)} key={item}>{item==='pending'?'Pendientes':item==='done'?'Hechas':'Todas'}</button>)}</div><button className="secondary" onClick={()=>setAdding(true)}><Plus size={16}/> Nueva tarea</button></div></div>
+      {visible.length?visible.map(task=><label className="task full" key={task.id}><input type="checkbox" checked={task.done} onChange={()=>toggleTask(task.id)}/><span className={task.done?'completed':''}>{task.title}</span><small>{task.contactId?contacts.find(contact=>contact.id===task.contactId)?.name+' · ':''}{task.dueDate}</small></label>):<Empty>No hay tareas en esta vista.</Empty>}
+    </section>
+    <TaskModal open={adding} onClose={()=>setAdding(false)}/>
+  </>
+}
+
+function TaskModal({open,onClose}:{open:boolean;onClose:()=>void}){
+  const {addTask,contacts}=useCrm();
+  const [title,setTitle]=useState('');
+  const [dueDate,setDueDate]=useState(tomorrow());
+  const [contactId,setContactId]=useState('');
+  if(!open)return null;
+  const submit=(event:FormEvent)=>{
+    event.preventDefault();
+    if(!title.trim())return;
+    addTask({title,dueDate,contactId:contactId||undefined});
+    setTitle('');setDueDate(tomorrow());setContactId('');onClose();
+  };
+  return <div className="modal-backdrop" onMouseDown={event=>{if(event.target===event.currentTarget)onClose()}}>
+    <form className="modal compact" onSubmit={submit}>
+      <div className="modal-head"><div><span className="eyebrow">SEGUIMIENTO</span><h2>Nueva tarea</h2></div><button className="icon-button" type="button" onClick={onClose}><X size={16}/></button></div>
+      <label>Tarea<input autoFocus value={title} onChange={event=>setTitle(event.target.value)} placeholder="Ej. Llamar a Juan" required/></label>
+      <label>Contacto<select value={contactId} onChange={event=>setContactId(event.target.value)}><option value="">Sin contacto</option>{contacts.map(contact=><option key={contact.id} value={contact.id}>{contact.name}</option>)}</select></label>
+      <label>Fecha<input type="date" value={dueDate} onChange={event=>setDueDate(event.target.value)} required/></label>
+      <div className="modal-actions"><button type="button" className="ghost" onClick={onClose}>Cancelar</button><button className="primary" type="submit">Guardar tarea</button></div>
+    </form>
+  </div>
+}
+
+function Login(){
+  const navigate=useNavigate();
+  const [username,setUsername]=useState('gaston');
+  const [password,setPassword]=useState('');
+  const [error,setError]=useState('');
+  const submit=async(event:FormEvent)=>{
+    event.preventDefault();
+    setError('');
+    const user=await authenticate(username,password);
+    if(!user){setError('Usuario o contraseña incorrectos.');return}
+    startSession(user);
+    navigate(`/t/${user.tenant}/dashboard`,{replace:true});
+  };
+  return <div className="login"><form className="login-card" onSubmit={submit}>
+    <div className="brand"><span>✦</span> GATRIVI CRM</div>
+    <h1>Entrá a tu espacio</h1>
+    <p>Contactos, negocios y próximos pasos sin vueltas.</p>
+    <input className="login-input" autoComplete="username" placeholder="Usuario" value={username} onChange={event=>setUsername(event.target.value)}/>
+    <input className="login-input" autoComplete="current-password" type="password" placeholder="Contraseña" value={password} onChange={event=>setPassword(event.target.value)}/>
+    {error&&<p className="error">{error}</p>}
+    <button className="primary full-button" type="submit">Entrar</button>
+    <small className="login-help">Usuarios de prueba: gaston / fausto</small>
+  </form></div>
+}
+
+function TenantApp(){
+  const {slug='gatrivi'}=useParams();
+  const session=getSession();
+  if(!session)return <Navigate to="/login" replace/>;
+  if(slug!==session.tenant)return <Navigate to={`/t/${session.tenant}/dashboard`} replace/>;
+  return <CrmProvider tenant={session.tenant}><Shell><Routes><Route path="dashboard" element={<Dashboard/>}/><Route path="pipeline" element={<Pipeline/>}/><Route path="contacts" element={<Contacts/>}/><Route path="contacts/:id" element={<ContactDetail/>}/><Route path="tasks" element={<Tasks/>}/><Route path="*" element={<Navigate to="dashboard" replace/>}/></Routes></Shell></CrmProvider>
+}
+
+function HomeRedirect(){const session=getSession();return <Navigate to={session?`/t/${session.tenant}/dashboard`:'/login'} replace/>}
+
+export default function App(){return <Routes><Route path="/login" element={<Login/>}/><Route path="/t/:slug/*" element={<TenantApp/>}/><Route path="*" element={<HomeRedirect/>}/></Routes>}

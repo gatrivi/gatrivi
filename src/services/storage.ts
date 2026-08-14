@@ -3,5 +3,13 @@ const key=(tenant:string)=>`crm-pyme:${tenant}`;
 const colors=['#2563eb','#8b5cf6','#f59e0b','#10b981','#ef4444'];
 export const defaultStages=(tenant='demo')=>['Nuevo','Contactado','Propuesta','Ganado','Perdido'].map((name,i)=>({id:`stage-${i+1}`,tenantId:tenant,name,order:i,color:colors[i]}));
 export function seed(tenant='demo'):CrmData { const now=new Date().toISOString(); const contacts=['Ana García','Bruno López','Carla Méndez','Diego Ruiz','Estudio Norte'].map((name,i)=>({id:`contact-${i+1}`,tenantId:tenant,name,phone:`+54 341 555-${100+i}`,email:`${name.toLowerCase().replaceAll(' ','-')}@ejemplo.com`,company:i===4?'Estudio Norte':'Pyme '+(i+1),notes:'Contacto de demostración.',createdAt:now})); const stages=defaultStages(tenant); const deals=[['Nuevo sitio web',0,850000],['Renovación anual',1,420000],['Implementación CRM',2,1250000],['Servicio mensual',3,280000],['Propuesta comercial',2,690000]].map((d,i)=>({id:`deal-${i+1}`,tenantId:tenant,contactId:contacts[i].id,title:d[0] as string,stageId:stages[d[1] as number].id,value:d[2] as number,currency:'ARS',createdAt:now,updatedAt:now})); const tasks=['Llamar a Ana','Enviar propuesta a Bruno','Revisar contrato','Preparar reunión'].map((title,i)=>({id:`task-${i+1}`,tenantId:tenant,contactId:contacts[i].id,dealId:deals[i]?.id,title,dueDate:new Date(Date.now()+(i+1)*86400000).toISOString().slice(0,10),done:i===3})); return {contacts,stages,deals,tasks}; }
-export function load(tenant:string):CrmData { const raw=localStorage.getItem(key(tenant)); if(raw) return JSON.parse(raw); const data=seed(tenant); localStorage.setItem(key(tenant),JSON.stringify(data)); return data; }
+export function load(tenant:string):CrmData {
+  try{
+    const raw=localStorage.getItem(key(tenant));
+    if(raw)return JSON.parse(raw) as CrmData;
+  }catch(error){console.error('No se pudo leer el CRM local',error);}
+  const data=seed(tenant);
+  try{save(tenant,data)}catch(error){console.error('No se pudo inicializar el CRM local',error)}
+  return data;
+}
 export function save(tenant:string,data:CrmData){localStorage.setItem(key(tenant),JSON.stringify(data));}
