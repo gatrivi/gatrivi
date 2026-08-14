@@ -2,15 +2,78 @@ import {createContext,useContext,useEffect,useMemo,useState,type ReactNode} from
 import type {CrmData,Deal,Task} from '../types';
 import {getRepository} from '../services/repository';
 
-type Ctx=CrmData & {tenant:string;moveDeal:(id:string,stageId:string)=>void;toggleTask:(id:string)=>void;updateStage:(id:string,name:string)=>void};
+type LeadInput={name:string;company:string;phone:string;email:string;dealTitle:string;value:number};
+type TaskInput={title:string;dueDate:string;contactId?:string};
+type Ctx=CrmData & {
+  tenant:string;
+  persistenceError:string;
+  moveDeal:(id:string,stageId:string)=>void;
+  toggleTask:(id:string)=>void;
+  updateStage:(id:string,name:string)=>void;
+  addLead:(input:LeadInput)=>void;
+  addTask:(input:TaskInput)=>void;
+};
+
 const Crm=createContext<Ctx|null>(null);
+const id=(prefix:string)=>`${prefix}-${globalThis.crypto?.randomUUID?.()??Date.now().toString(36)}`;
 
 export function CrmProvider({tenant,children}:{tenant:string;children:ReactNode}){
- const [data,setData]=useState<CrmData|null>(null);
- useEffect(()=>{getRepository().load(tenant).then(setData)},[tenant]);
- useEffect(()=>{if(data)getRepository().save(tenant,data)},[tenant,data]);
- if(!data)return <div className="loading">Cargando tu espacio...</div>;
- const value=useMemo(()=>({...data,tenant,moveDeal:(id:string,stageId:string)=>setData(current=>current?({...current,deals:current.deals.map(x=>x.id===id?{...x,stageId,updatedAt:new Date().toISOString()}:x)}):current),toggleTask:(id:string)=>setData(current=>current?({...current,tasks:current.tasks.map(x=>x.id===id?{...x,done:!x.done}:x)}):current),updateStage:(id:string,name:string)=>setData(current=>current?({...current,stages:current.stages.map(x=>x.id===id?{...x,name}:x)}):current)}),[data,tenant]);
- return <Crm.Provider value={value}>{children}</Crm.Provider>;
+  const repository=useMemo(()=>getRepository(),[]);
+  const [data,setData]=useState<CrmData|null>(null);
+  const [persistenceError,setPersistenceError]=useState('');
+
+  useEffect(()=>{
+    let active=true;
+    setData(null);
+    setPersistenceError('');
+    repository.load(tenant)
+      .then(next=>{if(active)setData(next)})
+      .catch(error=>{
+        console.error(error);
+        if(active)setPersistenceError('No pudimos cargar los datos. Recargá la página para reintentar.');
+      });
+    return()=>{active=false};
+  },[repository,tenant]);
+
+  useEffect(()=>{
+    if(!data)return;
+    repository.save(tenant,data)
+      .then(()=>setPersistenceError(''))
+      .catch(error=>{
+        console.error(error);
+        setPersistenceError('Los últimos cambios podrían no haberse guardado.');
+      });
+  },[data,repository,tenant]);
+
+  const value=useMemo<Ctx|null>(()=>{
+    if(!data)return null;
+    return {
+      ...data,
+      tenant,
+      persistenceError,
+      moveDeal:(dealId,stageId)=>setData(current=>current?({...current,deals:current.deals.map(deal=>deal.id===dealId?{...deal,stageId,updatedAt:new Date().toISOString()}:deal)}):current),
+      toggleTask:(taskId)=>setData(current=>current?({...current,tasks:current.tasks.map(task=>task.id===taskId?{...task,done:!task.done}:task)}):current),
+      updateStage:(stageId,name)=>setData(current=>current?({...current,stages:current.stages.map(stage=>stage.id===stageId?{...stage,name}:stage)}):current),
+      addLead:input=>setData(current=>{
+        if(!current)return current;
+        const now=new Date().toISOString();
+        const contactId=id('contact');
+        const dealId=id('deal');
+        const stageId=current.stages[0]?.id;
+        if(!stageId)return current;
+        return {
+          ...current,
+          contacts:[...current.contacts,{id:contactId,tenantId:tenant,name:input.name.trim(),phone:input.phone.trim(),email:input.email.trim(),company:input.company.trim(),notes:'Lead cargado desde alta rápida.',createdAt:now}],
+          deals:[...current.deals,{id:dealId,tenantId:tenant,contactId,title:input.dealTitle.trim(),stageId,value:input.value,currency:'ARS',createdAt:now,updatedAt:now}],
+        };
+      }),
+      addTask:input=>setData(current=>current?({...current,tasks:[...current.tasks,{id:id('task'),tenantId:tenant,contactId:input.contactId||undefined,title:input.title.trim(),dueDate:input.dueDate,done:false}]}):current),
+    };
+  },[data,persistenceError,tenant]);
+
+  if(!value)return <div className="loading">{persistenceError||'Cargando tu espacio...'}</div>;
+  return <Crm.Provider value={value}>{children}</Crm.Provider>;
 }
-export const useCrm=()=>{const c=useContext(Crm);if(!c)throw Error('CrmProvider missing');return c}; export type {Deal,Task};
+
+export const useCrm=()=>{const context=useContext(Crm);if(!context)throw Error('CrmProvider missing');return context};
+export type {Deal,Task};
