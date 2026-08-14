@@ -2,7 +2,7 @@ export type SessionUser={username:string;name:string;tenant:string};
 
 const SESSION_KEY='crm-session';
 const testUsers:Record<string,SessionUser>={
-  gaston:{username:'gaston',name:'Gastón',tenant:'gatrivi'},
+  gaston:{username:'gaston',name:'Gastón',tenant:'jobs'},
   fausto:{username:'fausto',name:'Fausto',tenant:'gatrivi'},
 };
 

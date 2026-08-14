@@ -18,7 +18,7 @@ const Crm=createContext<Ctx|null>(null);
 const id=(prefix:string)=>`${prefix}-${globalThis.crypto?.randomUUID?.()??Date.now().toString(36)}`;
 
 export function CrmProvider({tenant,children}:{tenant:string;children:ReactNode}){
-  const repository=useMemo(()=>getRepository(),[]);
+  const repository=useMemo(()=>getRepository(tenant),[tenant]);
   const [data,setData]=useState<CrmData|null>(null);
   const [persistenceError,setPersistenceError]=useState('');
 

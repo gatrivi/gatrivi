@@ -17,4 +17,4 @@ const resilientFirestoreRepository:CrmRepository={
   }
 };
 
-export const getRepository=():CrmRepository=>hasFirebaseConfig()?resilientFirestoreRepository:localRepository;
+export const getRepository=(tenant?:string):CrmRepository=>tenant==='jobs'?localRepository:hasFirebaseConfig()?resilientFirestoreRepository:localRepository;
