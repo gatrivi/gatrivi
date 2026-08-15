@@ -1,8 +1,9 @@
 import {createContext,useContext,useEffect,useMemo,useState,type ReactNode} from 'react';
-import type {CrmData,Deal,Task} from '../types';
+import type {CrmData,Deal,ProspectMeta,Task} from '../types';
 import {getRepository} from '../services/repository';
 
 type LeadInput={name:string;company:string;phone:string;email:string;dealTitle:string;value:number};
+type ProspectInput={name:string;company:string;phone:string;email:string;value:number;prospect:Omit<ProspectMeta,'createdAt'>};
 type TaskInput={title:string;dueDate:string;contactId?:string};
 type Ctx=CrmData & {
   tenant:string;
@@ -11,6 +12,7 @@ type Ctx=CrmData & {
   toggleTask:(id:string)=>void;
   updateStage:(id:string,name:string)=>void;
   addLead:(input:LeadInput)=>void;
+  addProspect:(input:ProspectInput)=>void;
   addTask:(input:TaskInput)=>void;
 };
 
@@ -65,6 +67,51 @@ export function CrmProvider({tenant,children}:{tenant:string;children:ReactNode}
           ...current,
           contacts:[...current.contacts,{id:contactId,tenantId:tenant,name:input.name.trim(),phone:input.phone.trim(),email:input.email.trim(),company:input.company.trim(),notes:'Lead cargado desde alta rápida.',createdAt:now}],
           deals:[...current.deals,{id:dealId,tenantId:tenant,contactId,title:input.dealTitle.trim(),stageId,value:input.value,currency:'ARS',createdAt:now,updatedAt:now}],
+        };
+      }),
+      addProspect:input=>setData(current=>{
+        if(!current)return current;
+        const now=new Date().toISOString();
+        const contactId=id('contact');
+        const dealId=id('deal');
+        const taskId=id('task');
+        const stageId=current.stages[0]?.id;
+        if(!stageId)return current;
+        const company=input.company.trim()||input.name.trim();
+        const contactName=input.name.trim()||company;
+        return {
+          ...current,
+          contacts:[...current.contacts,{
+            id:contactId,
+            tenantId:tenant,
+            name:contactName,
+            phone:input.phone.trim(),
+            email:input.email.trim(),
+            company,
+            notes:`Prospecto TMM · fit ${input.prospect.score}/100.`,
+            createdAt:now,
+            prospect:{...input.prospect,createdAt:now},
+          }],
+          deals:[...current.deals,{
+            id:dealId,
+            tenantId:tenant,
+            contactId,
+            title:`Sitio / tienda para ${company}`,
+            stageId,
+            value:input.value,
+            currency:'ARS',
+            createdAt:now,
+            updatedAt:now,
+          }],
+          tasks:[...current.tasks,{
+            id:taskId,
+            tenantId:tenant,
+            contactId,
+            dealId,
+            title:`Contactar a ${company}`,
+            dueDate:new Date(Date.now()+86400000).toISOString().slice(0,10),
+            done:false,
+          }],
         };
       }),
       addTask:input=>setData(current=>current?({...current,tasks:[...current.tasks,{id:id('task'),tenantId:tenant,contactId:input.contactId||undefined,title:input.title.trim(),dueDate:input.dueDate,done:false}]}):current),
