@@ -2,7 +2,7 @@ export type SessionUser={username:string;name:string;tenant:string};
 
 const SESSION_KEY='crm-session';
 const testUsers:Record<string,SessionUser>={
-  gaston:{username:'gaston',name:'Gastón',tenant:'gatrivi'},
+  gaston:{username:'gaston',name:'Gastón',tenant:'jobs'},
   fausto:{username:'fausto',name:'Fausto',tenant:'gatrivi'},
 };
 
@@ -31,7 +31,13 @@ export function getSession():SessionUser|null{
     const raw=localStorage.getItem(SESSION_KEY);
     if(!raw)return null;
     const user=JSON.parse(raw) as SessionUser;
-    return user?.username&&user?.tenant?user:null;
+    if(!user?.username)return null;
+    const canonical=testUsers[user.username.toLowerCase()];
+    if(canonical){
+      if(user.tenant!==canonical.tenant||user.name!==canonical.name)startSession(canonical);
+      return canonical;
+    }
+    return user.tenant?user:null;
   }catch{return null;}
 }
 export const isAuthenticated=()=>Boolean(getSession());
