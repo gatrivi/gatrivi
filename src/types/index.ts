@@ -1,6 +1,7 @@
 export interface ProspectMeta {
   sourceUrl:string;
   platform:'instagram'|'facebook'|'other';
+  socialHandle?:string;
   area:string;
   category:string;
   color:string;
