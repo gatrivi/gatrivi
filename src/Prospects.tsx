@@ -1,7 +1,8 @@
-import {useMemo,useState,type FormEvent} from 'react';
+import {useEffect,useMemo,useState,type FormEvent} from 'react';
 import {useSearchParams} from 'react-router-dom';
-import {Copy,ExternalLink,Target} from 'lucide-react';
+import {Copy,ExternalLink,Smartphone,Target} from 'lucide-react';
 import {useCrm} from './context/CrmContext';
+import {parseProspectCapture} from './services/prospectCapture';
 import {
   buildDemoLinks,
   buildOutreachMessage,
@@ -35,33 +36,38 @@ const inputStyle={width:'100%',minHeight:42,border:'1px solid #d6d3d1',borderRad
 const labelStyle={display:'grid',gap:6,fontSize:12,fontWeight:700} as const;
 const gridStyle={display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))',gap:12} as const;
 
-function platformFromUrl(url:string):ProspectPlatform{
-  if(url.includes('instagram.com'))return 'instagram';
-  if(url.includes('facebook.com')||url.includes('fb.com'))return 'facebook';
-  return 'other';
-}
-
-function capturedName(value:string){
-  const cleaned=value.replace(/\s*[|·•-]\s*(Instagram|Facebook).*$/i,'').trim();
-  return /^(instagram|facebook)$/i.test(cleaned)?'':cleaned.slice(0,80);
-}
+type InstallPromptEvent=Event&{
+  prompt:()=>Promise<void>;
+  userChoice:Promise<{outcome:'accepted'|'dismissed'}>;
+};
 
 export default function Prospects(){
   const {contacts,addProspect,tenant}=useCrm();
   const [params]=useSearchParams();
-  const capturedSource=params.get('source')?.trim()??'';
-  const [company,setCompany]=useState(()=>capturedName(params.get('name')??''));
+  const capture=parseProspectCapture(params);
+  const captured=Boolean(capture.sourceUrl||capture.title||capture.text);
+  const [company,setCompany]=useState(capture.company);
   const [contactName,setContactName]=useState('');
   const [phone,setPhone]=useState('');
-  const [sourceUrl,setSourceUrl]=useState(capturedSource);
-  const [platform,setPlatform]=useState<ProspectPlatform>(()=>capturedSource?platformFromUrl(capturedSource):'instagram');
-  const [area,setArea]=useState('Olivos');
-  const [category,setCategory]=useState<ProspectCategory>('gastronomia');
+  const [sourceUrl,setSourceUrl]=useState(capture.sourceUrl);
+  const [platform,setPlatform]=useState<ProspectPlatform>(capture.platform);
+  const [area,setArea]=useState(capture.area);
+  const [category,setCategory]=useState<ProspectCategory>(capture.category);
   const [color,setColor]=useState<ProspectColor>('carbon');
   const [value,setValue]=useState('325000');
   const [signals,setSignals]=useState<ProspectSignals>(defaultSignals);
   const [saved,setSaved]=useState('');
   const [copied,setCopied]=useState('');
+  const [installPrompt,setInstallPrompt]=useState<InstallPromptEvent|null>(null);
+
+  useEffect(()=>{
+    const handler=(event:Event)=>{
+      event.preventDefault();
+      setInstallPrompt(event as InstallPromptEvent);
+    };
+    window.addEventListener('beforeinstallprompt',handler);
+    return()=>window.removeEventListener('beforeinstallprompt',handler);
+  },[]);
 
   const qualification=useMemo(()=>scoreProspect(signals),[signals]);
   const demoLinks=useMemo(()=>buildDemoLinks({businessName:company||'Tu negocio',area,category,color}),[company,area,category,color]);
@@ -77,6 +83,12 @@ export default function Prospects(){
       setCopied(key);
       window.setTimeout(()=>setCopied(current=>current===key?'':current),1500);
     }catch{setCopied('')}
+  };
+  const installMobile=async()=>{
+    if(!installPrompt)return;
+    await installPrompt.prompt();
+    const choice=await installPrompt.userChoice;
+    if(choice.outcome==='accepted')setInstallPrompt(null);
   };
 
   const submit=(event:FormEvent)=>{
@@ -116,9 +128,17 @@ export default function Prospects(){
         <div style={{textAlign:'right'}}><strong style={{fontSize:28}}>{qualification.score}/100</strong><small style={{display:'block'}}>{fit}</small></div>
       </div>
 
+      {captured&&<div className="note" style={{marginBottom:16}}>
+        <b>Capturado desde {capture.platform==='other'?'otra app':capture.platform}</b>
+        <small style={{display:'block',marginTop:4}}>{capture.inferred.length?`Inferí ${capture.inferred.join(' · ')}. Revisá y guardá.`:'Adjunté la fuente. Completá el nombre y guardá.'}</small>
+      </div>}
+
       <div className="note" style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,flexWrap:'wrap',marginBottom:16}}>
-        <span><b>Captura 1-click</b><small style={{display:'block'}}>Copiá esto como URL de un favorito llamado “TMM lead”. Desde cualquier anuncio abre este formulario con la página ya adjunta.</small></span>
-        <button className="secondary" type="button" onClick={()=>copy('bookmarklet',bookmarklet)}><Copy size={15}/> {copied==='bookmarklet'?'Copiado':'Copiar capturador'}</button>
+        <span><b>Captura rápida</b><small style={{display:'block'}}>Android: instalá Gatrivi CRM y aparecerá como destino en Compartir. Desktop: guardá el capturador como favorito “TMM lead”.</small></span>
+        <span style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+          {installPrompt&&<button className="secondary" type="button" onClick={installMobile}><Smartphone size={15}/> Instalar captura móvil</button>}
+          <button className="secondary" type="button" onClick={()=>copy('bookmarklet',bookmarklet)}><Copy size={15}/> {copied==='bookmarklet'?'Copiado':'Copiar capturador'}</button>
+        </span>
       </div>
 
       <form onSubmit={submit} style={{display:'grid',gap:16}}>
