@@ -1,4 +1,5 @@
 import {useMemo,useState,type FormEvent} from 'react';
+import {useSearchParams} from 'react-router-dom';
 import {Copy,ExternalLink,Target} from 'lucide-react';
 import {useCrm} from './context/CrmContext';
 import {
@@ -34,13 +35,26 @@ const inputStyle={width:'100%',minHeight:42,border:'1px solid #d6d3d1',borderRad
 const labelStyle={display:'grid',gap:6,fontSize:12,fontWeight:700} as const;
 const gridStyle={display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))',gap:12} as const;
 
+function platformFromUrl(url:string):ProspectPlatform{
+  if(url.includes('instagram.com'))return 'instagram';
+  if(url.includes('facebook.com')||url.includes('fb.com'))return 'facebook';
+  return 'other';
+}
+
+function capturedName(value:string){
+  const cleaned=value.replace(/\s*[|·•-]\s*(Instagram|Facebook).*$/i,'').trim();
+  return /^(instagram|facebook)$/i.test(cleaned)?'':cleaned.slice(0,80);
+}
+
 export default function Prospects(){
-  const {contacts,addProspect}=useCrm();
-  const [company,setCompany]=useState('');
+  const {contacts,addProspect,tenant}=useCrm();
+  const [params]=useSearchParams();
+  const capturedSource=params.get('source')?.trim()??'';
+  const [company,setCompany]=useState(()=>capturedName(params.get('name')??''));
   const [contactName,setContactName]=useState('');
   const [phone,setPhone]=useState('');
-  const [sourceUrl,setSourceUrl]=useState('');
-  const [platform,setPlatform]=useState<ProspectPlatform>('instagram');
+  const [sourceUrl,setSourceUrl]=useState(capturedSource);
+  const [platform,setPlatform]=useState<ProspectPlatform>(()=>capturedSource?platformFromUrl(capturedSource):'instagram');
   const [area,setArea]=useState('Olivos');
   const [category,setCategory]=useState<ProspectCategory>('gastronomia');
   const [color,setColor]=useState<ProspectColor>('carbon');
@@ -53,6 +67,8 @@ export default function Prospects(){
   const demoLinks=useMemo(()=>buildDemoLinks({businessName:company||'Tu negocio',area,category,color}),[company,area,category,color]);
   const outreach=useMemo(()=>buildOutreachMessage(company,demoLinks.customerUrl),[company,demoLinks.customerUrl]);
   const prospects=contacts.filter(contact=>contact.prospect).sort((a,b)=>(b.prospect?.score??0)-(a.prospect?.score??0));
+  const captureBase=typeof window==='undefined'?'':`${window.location.origin}/t/${tenant}/prospects`;
+  const bookmarklet=`javascript:(()=>{const p=new URLSearchParams({source:location.href,name:document.title});open('${captureBase}?'+p.toString(),'_blank')})()`;
 
   const setSignal=(key:keyof ProspectSignals)=>setSignals(current=>({...current,[key]:!current[key]}));
   const copy=async(key:string,text:string)=>{
@@ -100,9 +116,14 @@ export default function Prospects(){
         <div style={{textAlign:'right'}}><strong style={{fontSize:28}}>{qualification.score}/100</strong><small style={{display:'block'}}>{fit}</small></div>
       </div>
 
+      <div className="note" style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,flexWrap:'wrap',marginBottom:16}}>
+        <span><b>Captura 1-click</b><small style={{display:'block'}}>Copiá esto como URL de un favorito llamado “TMM lead”. Desde cualquier anuncio abre este formulario con la página ya adjunta.</small></span>
+        <button className="secondary" type="button" onClick={()=>copy('bookmarklet',bookmarklet)}><Copy size={15}/> {copied==='bookmarklet'?'Copiado':'Copiar capturador'}</button>
+      </div>
+
       <form onSubmit={submit} style={{display:'grid',gap:16}}>
         <div style={gridStyle}>
-          <label style={labelStyle}>Negocio<input style={inputStyle} value={company} onChange={event=>setCompany(event.target.value)} placeholder="Ej. Panadería Roma" required/></label>
+          <label style={labelStyle}>Negocio<input style={inputStyle} autoFocus value={company} onChange={event=>setCompany(event.target.value)} placeholder="Ej. Panadería Roma" required/></label>
           <label style={labelStyle}>Contacto<input style={inputStyle} value={contactName} onChange={event=>setContactName(event.target.value)} placeholder="Opcional"/></label>
           <label style={labelStyle}>Teléfono / WhatsApp<input style={inputStyle} value={phone} onChange={event=>setPhone(event.target.value)} placeholder="Opcional"/></label>
           <label style={labelStyle}>Plataforma<select style={inputStyle} value={platform} onChange={event=>setPlatform(event.target.value as ProspectPlatform)}><option value="instagram">Instagram</option><option value="facebook">Facebook</option><option value="other">Otra</option></select></label>
