@@ -1,7 +1,8 @@
 import {Navigate,NavLink,Route,Routes,useNavigate,useParams,useSearchParams} from 'react-router-dom';
-import {BarChart3,BriefcaseBusiness,CheckSquare,ContactRound,Edit3,LogOut,Plus,Search,X} from 'lucide-react';
+import {BarChart3,BriefcaseBusiness,CheckSquare,ContactRound,Edit3,LogOut,Plus,Search,Target,X} from 'lucide-react';
 import {CrmProvider,useCrm} from './context/CrmContext';
 import {authenticate,getSession,signOut,startSession} from './services/auth';
+import Prospects from './Prospects';
 import {useEffect,useState,type DragEvent,type FormEvent,type ReactNode} from 'react';
 
 const money=(n:number)=>new Intl.NumberFormat('es-AR',{style:'currency',currency:'ARS',maximumFractionDigits:0}).format(n);
@@ -14,7 +15,7 @@ function Shell({children}:{children:ReactNode}){
   const {tenant,persistenceError}=useCrm();
   const navigate=useNavigate();
   const session=getSession();
-  const nav=[['dashboard','Resumen',BarChart3],['pipeline','Pipeline',BriefcaseBusiness],['contacts','Contactos',ContactRound],['tasks','Tareas',CheckSquare]] as const;
+  const nav=[['dashboard','Resumen',BarChart3],['pipeline','Pipeline',BriefcaseBusiness],['prospects','Prospectos',Target],['contacts','Contactos',ContactRound],['tasks','Tareas',CheckSquare]] as const;
   const name=session?.name??'Vos';
   const initials=name.split(' ').map(part=>part[0]).join('').slice(0,2).toUpperCase();
   return <div className="app">
@@ -152,6 +153,7 @@ function ContactDetail(){
     <NavLink className="link" to={`/t/${tenant}/contacts`}>← Volver a contactos</NavLink>
     <div className="detail-head"><div className="avatar large">{contact.name.split(' ').map(part=>part[0]).join('').slice(0,2)}</div><div><span className="eyebrow">CONTACTO</span><h2>{contact.name}</h2><p>{contact.company||'Sin empresa'}{contact.email?` · ${contact.email}`:''}{contact.phone?` · ${contact.phone}`:''}</p></div></div>
     <p className="note">{contact.notes||'Sin notas.'}</p>
+    {contact.prospect&&<><h3>Prospecto TMM · {contact.prospect.score}/100</h3><div className="stage-row"><span>{contact.prospect.scoreReasons.join(' · ')}</span><a className="link" href={contact.prospect.demoUrl} target="_blank" rel="noreferrer">Abrir demo →</a></div></>}
     <h3>Negocios vinculados</h3>{linkedDeals.length?linkedDeals.map(deal=><div className="stage-row" key={deal.id}><span>{deal.title}</span><b>{money(deal.value)}</b></div>):<Empty>Sin negocios vinculados.</Empty>}
     <h3>Tareas vinculadas</h3>{linkedTasks.length?linkedTasks.map(task=><div className="stage-row" key={task.id}><span>{task.title}</span><b>{task.done?'Lista':'Pendiente'}</b></div>):<Empty>Sin tareas vinculadas.</Empty>}
   </section>
@@ -224,7 +226,7 @@ function TenantApp(){
   const session=getSession();
   if(!session)return <Navigate to="/login" replace/>;
   if(slug!==session.tenant)return <Navigate to={`/t/${session.tenant}/dashboard`} replace/>;
-  return <CrmProvider tenant={session.tenant}><Shell><Routes><Route path="dashboard" element={<Dashboard/>}/><Route path="pipeline" element={<Pipeline/>}/><Route path="contacts" element={<Contacts/>}/><Route path="contacts/:id" element={<ContactDetail/>}/><Route path="tasks" element={<Tasks/>}/><Route path="*" element={<Navigate to="dashboard" replace/>}/></Routes></Shell></CrmProvider>
+  return <CrmProvider tenant={session.tenant}><Shell><Routes><Route path="dashboard" element={<Dashboard/>}/><Route path="pipeline" element={<Pipeline/>}/><Route path="prospects" element={<Prospects/>}/><Route path="contacts" element={<Contacts/>}/><Route path="contacts/:id" element={<ContactDetail/>}/><Route path="tasks" element={<Tasks/>}/><Route path="*" element={<Navigate to="dashboard" replace/>}/></Routes></Shell></CrmProvider>
 }
 
 function HomeRedirect(){const session=getSession();return <Navigate to={session?`/t/${session.tenant}/dashboard`:'/login'} replace/>}
