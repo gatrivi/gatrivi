@@ -2,7 +2,9 @@ import {Navigate,NavLink,Route,Routes,useNavigate,useParams,useSearchParams} fro
 import {BarChart3,BriefcaseBusiness,CheckSquare,ContactRound,Edit3,LogOut,Plus,Search,Target,X} from 'lucide-react';
 import {CrmProvider,useCrm} from './context/CrmContext';
 import {authenticate,getSession,signOut,startSession} from './services/auth';
+import {registerCrmPwa} from './services/pwa';
 import Prospects from './Prospects';
+import ShareTarget from './ShareTarget';
 import {useEffect,useState,type DragEvent,type FormEvent,type ReactNode} from 'react';
 
 const money=(n:number)=>new Intl.NumberFormat('es-AR',{style:'currency',currency:'ARS',maximumFractionDigits:0}).format(n);
@@ -153,7 +155,7 @@ function ContactDetail(){
     <NavLink className="link" to={`/t/${tenant}/contacts`}>← Volver a contactos</NavLink>
     <div className="detail-head"><div className="avatar large">{contact.name.split(' ').map(part=>part[0]).join('').slice(0,2)}</div><div><span className="eyebrow">CONTACTO</span><h2>{contact.name}</h2><p>{contact.company||'Sin empresa'}{contact.email?` · ${contact.email}`:''}{contact.phone?` · ${contact.phone}`:''}</p></div></div>
     <p className="note">{contact.notes||'Sin notas.'}</p>
-    {contact.prospect&&<><h3>Prospecto TMM · {contact.prospect.score}/100</h3><div className="stage-row"><span>{contact.prospect.scoreReasons.join(' · ')}</span><a className="link" href={contact.prospect.demoUrl} target="_blank" rel="noreferrer">Abrir demo →</a></div></>}
+    {contact.prospect&&<><h3>Prospecto TMM · {contact.prospect.score}/100</h3><div className="stage-row"><span>{contact.prospect.socialHandle?`${contact.prospect.socialHandle} · `:''}{contact.prospect.scoreReasons.join(' · ')}</span><a className="link" href={contact.prospect.demoUrl} target="_blank" rel="noreferrer">Abrir demo →</a></div></>}
     <h3>Negocios vinculados</h3>{linkedDeals.length?linkedDeals.map(deal=><div className="stage-row" key={deal.id}><span>{deal.title}</span><b>{money(deal.value)}</b></div>):<Empty>Sin negocios vinculados.</Empty>}
     <h3>Tareas vinculadas</h3>{linkedTasks.length?linkedTasks.map(task=><div className="stage-row" key={task.id}><span>{task.title}</span><b>{task.done?'Lista':'Pendiente'}</b></div>):<Empty>Sin tareas vinculadas.</Empty>}
   </section>
@@ -198,6 +200,7 @@ function TaskModal({open,onClose}:{open:boolean;onClose:()=>void}){
 
 function Login(){
   const navigate=useNavigate();
+  const [params]=useSearchParams();
   const [username,setUsername]=useState('gaston');
   const [password,setPassword]=useState('');
   const [error,setError]=useState('');
@@ -207,7 +210,9 @@ function Login(){
     const user=await authenticate(username,password);
     if(!user){setError('Usuario o contraseña incorrectos.');return}
     startSession(user);
-    navigate(`/t/${user.tenant}/dashboard`,{replace:true});
+    const next=params.get('next');
+    const safeNext=next?.startsWith('/')&&!next.startsWith('//')?next:null;
+    navigate(safeNext??`/t/${user.tenant}/dashboard`,{replace:true});
   };
   return <div className="login"><form className="login-card" onSubmit={submit}>
     <div className="brand"><span>✦</span> GATRIVI CRM</div>
@@ -231,4 +236,7 @@ function TenantApp(){
 
 function HomeRedirect(){const session=getSession();return <Navigate to={session?`/t/${session.tenant}/dashboard`:'/login'} replace/>}
 
-export default function App(){return <Routes><Route path="/login" element={<Login/>}/><Route path="/t/:slug/*" element={<TenantApp/>}/><Route path="*" element={<HomeRedirect/>}/></Routes>}
+export default function App(){
+  useEffect(()=>registerCrmPwa(),[]);
+  return <Routes><Route path="/share-target" element={<ShareTarget/>}/><Route path="/login" element={<Login/>}/><Route path="/t/:slug/*" element={<TenantApp/>}/><Route path="*" element={<HomeRedirect/>}/></Routes>;
+}

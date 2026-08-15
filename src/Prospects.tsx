@@ -1,6 +1,6 @@
 import {useMemo,useState,type FormEvent} from 'react';
+import {Copy,ExternalLink,Share2,Target} from 'lucide-react';
 import {useSearchParams} from 'react-router-dom';
-import {Copy,ExternalLink,Target} from 'lucide-react';
 import {useCrm} from './context/CrmContext';
 import {
   buildDemoLinks,
@@ -12,6 +12,7 @@ import {
   type ProspectPlatform,
   type ProspectSignals,
 } from './services/prospecting';
+import {inferProspectPrefill,sharedPayloadFromSearch} from './services/shareCapture';
 
 const defaultSignals:ProspectSignals={
   runningAds:true,
@@ -35,28 +36,19 @@ const inputStyle={width:'100%',minHeight:42,border:'1px solid #d6d3d1',borderRad
 const labelStyle={display:'grid',gap:6,fontSize:12,fontWeight:700} as const;
 const gridStyle={display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))',gap:12} as const;
 
-function platformFromUrl(url:string):ProspectPlatform{
-  if(url.includes('instagram.com'))return 'instagram';
-  if(url.includes('facebook.com')||url.includes('fb.com'))return 'facebook';
-  return 'other';
-}
-
-function capturedName(value:string){
-  const cleaned=value.replace(/\s*[|·•-]\s*(Instagram|Facebook).*$/i,'').trim();
-  return /^(instagram|facebook)$/i.test(cleaned)?'':cleaned.slice(0,80);
-}
-
 export default function Prospects(){
   const {contacts,addProspect,tenant}=useCrm();
   const [params]=useSearchParams();
-  const capturedSource=params.get('source')?.trim()??'';
-  const [company,setCompany]=useState(()=>capturedName(params.get('name')??''));
+  const initial=inferProspectPrefill(sharedPayloadFromSearch(params));
+  const shared=params.get('shared')==='1'||Boolean(params.get('source')||params.get('url'));
+  const [company,setCompany]=useState(initial.company);
+  const [socialHandle,setSocialHandle]=useState(initial.socialHandle);
   const [contactName,setContactName]=useState('');
   const [phone,setPhone]=useState('');
-  const [sourceUrl,setSourceUrl]=useState(capturedSource);
-  const [platform,setPlatform]=useState<ProspectPlatform>(()=>capturedSource?platformFromUrl(capturedSource):'instagram');
+  const [sourceUrl,setSourceUrl]=useState(initial.sourceUrl);
+  const [platform,setPlatform]=useState<ProspectPlatform>(initial.platform==='other'?'instagram':initial.platform);
   const [area,setArea]=useState('Olivos');
-  const [category,setCategory]=useState<ProspectCategory>('gastronomia');
+  const [category,setCategory]=useState<ProspectCategory>(initial.category);
   const [color,setColor]=useState<ProspectColor>('carbon');
   const [value,setValue]=useState('325000');
   const [signals,setSignals]=useState<ProspectSignals>(defaultSignals);
@@ -67,8 +59,8 @@ export default function Prospects(){
   const demoLinks=useMemo(()=>buildDemoLinks({businessName:company||'Tu negocio',area,category,color}),[company,area,category,color]);
   const outreach=useMemo(()=>buildOutreachMessage(company,demoLinks.customerUrl),[company,demoLinks.customerUrl]);
   const prospects=contacts.filter(contact=>contact.prospect).sort((a,b)=>(b.prospect?.score??0)-(a.prospect?.score??0));
-  const captureBase=typeof window==='undefined'?'':`${window.location.origin}/t/${tenant}/prospects`;
-  const bookmarklet=`javascript:(()=>{const p=new URLSearchParams({source:location.href,name:document.title});open('${captureBase}?'+p.toString(),'_blank')})()`;
+  const crmCaptureUrl=typeof window==='undefined'?'':`${window.location.origin}/t/${tenant}/prospects`;
+  const bookmarklet=`javascript:(()=>{const u=new URL(${JSON.stringify(crmCaptureUrl)});u.searchParams.set('source',location.href);u.searchParams.set('title',document.title);location.href=u.toString()})()`;
 
   const setSignal=(key:keyof ProspectSignals)=>setSignals(current=>({...current,[key]:!current[key]}));
   const copy=async(key:string,text:string)=>{
@@ -91,6 +83,7 @@ export default function Prospects(){
       prospect:{
         sourceUrl:sourceUrl.trim(),
         platform,
+        socialHandle:socialHandle.trim(),
         area:area.trim()||'Zona Norte',
         category,
         color,
@@ -104,26 +97,26 @@ export default function Prospects(){
       },
     });
     setSaved(company.trim());
-    setCompany('');setContactName('');setPhone('');setSourceUrl('');
+    setCompany('');setSocialHandle('');setContactName('');setPhone('');setSourceUrl('');
   };
 
   const fit=qualification.score>=80?'Prioridad alta':qualification.score>=55?'Buen candidato':'Baja prioridad';
 
   return <div style={{display:'grid',gap:18}}>
+    {shared&&<section className="panel wide" style={{border:'1px solid #b7d733'}}>
+      <div style={{display:'flex',gap:12,alignItems:'center'}}><Share2 size={20}/><div><b>Lead recibido por compartir</b><small style={{display:'block'}}>Inferí lo evidente; revisá nombre, rubro y señales antes de guardarlo.</small></div></div>
+    </section>}
+
     <section className="panel wide">
       <div className="panel-title">
         <div><span className="eyebrow">TMM OUTBOUND</span><h2>Capturar prospecto</h2></div>
         <div style={{textAlign:'right'}}><strong style={{fontSize:28}}>{qualification.score}/100</strong><small style={{display:'block'}}>{fit}</small></div>
       </div>
 
-      <div className="note" style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,flexWrap:'wrap',marginBottom:16}}>
-        <span><b>Captura 1-click</b><small style={{display:'block'}}>Copiá esto como URL de un favorito llamado “TMM lead”. Desde cualquier anuncio abre este formulario con la página ya adjunta.</small></span>
-        <button className="secondary" type="button" onClick={()=>copy('bookmarklet',bookmarklet)}><Copy size={15}/> {copied==='bookmarklet'?'Copiado':'Copiar capturador'}</button>
-      </div>
-
       <form onSubmit={submit} style={{display:'grid',gap:16}}>
         <div style={gridStyle}>
-          <label style={labelStyle}>Negocio<input style={inputStyle} autoFocus value={company} onChange={event=>setCompany(event.target.value)} placeholder="Ej. Panadería Roma" required/></label>
+          <label style={labelStyle}>Negocio<input style={inputStyle} value={company} onChange={event=>setCompany(event.target.value)} placeholder="Ej. Panadería Roma" required/></label>
+          <label style={labelStyle}>Usuario / handle<input style={inputStyle} value={socialHandle} onChange={event=>setSocialHandle(event.target.value)} placeholder="@panaderiaroma"/></label>
           <label style={labelStyle}>Contacto<input style={inputStyle} value={contactName} onChange={event=>setContactName(event.target.value)} placeholder="Opcional"/></label>
           <label style={labelStyle}>Teléfono / WhatsApp<input style={inputStyle} value={phone} onChange={event=>setPhone(event.target.value)} placeholder="Opcional"/></label>
           <label style={labelStyle}>Plataforma<select style={inputStyle} value={platform} onChange={event=>setPlatform(event.target.value as ProspectPlatform)}><option value="instagram">Instagram</option><option value="facebook">Facebook</option><option value="other">Otra</option></select></label>
@@ -156,11 +149,19 @@ export default function Prospects(){
     </section>
 
     <section className="panel wide">
+      <div className="panel-title"><div><span className="eyebrow">CAPTURA RÁPIDA</span><h2>Desde navegador o teléfono</h2></div></div>
+      <div style={gridStyle}>
+        <div className="note"><b>📱 Compartir desde el teléfono</b><p>Instalá Gatrivi CRM como app. Después, desde una publicación o perfil, usá Compartir → Gatrivi CRM. El formulario abre prellenado.</p></div>
+        <div className="note"><b>🔖 Bookmarklet desktop</b><p>Copiá este código como URL de un favorito llamado “TMM lead”. Al tocarlo sobre una página, trae URL + título al CRM.</p><button className="secondary" type="button" onClick={()=>copy('bookmarklet',bookmarklet)}><Copy size={15}/> {copied==='bookmarklet'?'Copiado':'Copiar bookmarklet'}</button></div>
+      </div>
+    </section>
+
+    <section className="panel wide">
       <div className="panel-title"><div><span className="eyebrow">COLA COMERCIAL</span><h2>Prospectos TMM</h2></div><b>{prospects.length}</b></div>
       {!prospects.length?<div className="empty">Todavía no capturaste prospectos.</div>:prospects.map(contact=>{
         const prospect=contact.prospect!;
         return <div className="stage-row" key={contact.id} style={{gridTemplateColumns:'minmax(150px,1.2fr) 80px minmax(180px,1fr) auto'}}>
-          <span><b>{contact.company||contact.name}</b><small style={{display:'block'}}>{prospect.platform} · {prospect.area}</small></span>
+          <span><b>{contact.company||contact.name}</b><small style={{display:'block'}}>{prospect.socialHandle?`${prospect.socialHandle} · `:''}{prospect.platform} · {prospect.area}</small></span>
           <b>{prospect.score}/100</b>
           <span style={{fontSize:12}}>{prospect.scoreReasons.slice(0,2).join(' · ')}</span>
           <span style={{display:'flex',gap:6,flexWrap:'wrap',justifyContent:'flex-end'}}>
