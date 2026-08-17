@@ -39,6 +39,13 @@ export function CrmProvider({tenant,children}:{tenant:string;children:ReactNode}
   },[repository,tenant]);
 
   useEffect(()=>{
+    if(!data||tenant==='jobs'||data.contacts.some(contact=>contact.prospect))return;
+    if(window.location.pathname===`/t/${tenant}/dashboard`){
+      window.location.replace(`/t/${tenant}/prospects`);
+    }
+  },[data,tenant]);
+
+  useEffect(()=>{
     if(!data)return;
     repository.save(tenant,data)
       .then(()=>setPersistenceError(''))
