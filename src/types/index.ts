@@ -19,6 +19,8 @@ export interface ProspectMeta {
   demoUrl:string;
   ownerUrl:string;
   outreachMessage:string;
+  outreachMessages?:string[];
+  lastContactedAt?:string;
   createdAt:string;
 }
 
