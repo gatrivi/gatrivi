@@ -14,6 +14,8 @@ type Ctx=CrmData & {
   addLead:(input:LeadInput)=>void;
   addProspect:(input:ProspectInput)=>void;
   addTask:(input:TaskInput)=>void;
+  setProspectStage:(contactId:string,stageName:string)=>void;
+  markProspectContacted:(contactId:string)=>void;
 };
 
 const Crm=createContext<Ctx|null>(null);
@@ -75,7 +77,7 @@ export function CrmProvider({tenant,children}:{tenant:string;children:ReactNode}
         const contactId=id('contact');
         const dealId=id('deal');
         const taskId=id('task');
-        const stageId=current.stages[0]?.id;
+        const stageId=current.stages.find(stage=>stage.name==='Nuevo')?.id??current.stages[0]?.id;
         if(!stageId)return current;
         const company=input.company.trim()||input.name.trim();
         const contactName=input.name.trim()||company;
@@ -115,6 +117,41 @@ export function CrmProvider({tenant,children}:{tenant:string;children:ReactNode}
         };
       }),
       addTask:input=>setData(current=>current?({...current,tasks:[...current.tasks,{id:id('task'),tenantId:tenant,contactId:input.contactId||undefined,title:input.title.trim(),dueDate:input.dueDate,done:false}]}):current),
+      setProspectStage:(contactId,stageName)=>setData(current=>{
+        if(!current)return current;
+        const stage=current.stages.find(item=>item.name===stageName);
+        if(!stage)return current;
+        const now=new Date().toISOString();
+        return {...current,deals:current.deals.map(deal=>deal.contactId===contactId?{...deal,stageId:stage.id,updatedAt:now}:deal)};
+      }),
+      markProspectContacted:contactId=>setData(current=>{
+        if(!current)return current;
+        const now=new Date().toISOString();
+        const contact=current.contacts.find(item=>item.id===contactId);
+        if(!contact?.prospect)return current;
+        const deal=current.deals.find(item=>item.contactId===contactId);
+        const contactedStage=current.stages.find(stage=>stage.name==='Contactado');
+        const company=contact.company||contact.name;
+        let tasks=current.tasks.map(task=>task.contactId===contactId&&!task.done&&task.title.toLowerCase().startsWith('contactar')?{...task,done:true}:task);
+        const hasOpenFollowup=tasks.some(task=>task.contactId===contactId&&!task.done&&task.title.toLowerCase().includes('follow-up'));
+        if(!hasOpenFollowup){
+          tasks=[...tasks,{
+            id:id('task'),
+            tenantId:tenant,
+            contactId,
+            dealId:deal?.id,
+            title:`Follow-up: ${company}`,
+            dueDate:new Date(Date.now()+2*86400000).toISOString().slice(0,10),
+            done:false,
+          }];
+        }
+        return {
+          ...current,
+          contacts:current.contacts.map(item=>item.id===contactId&&item.prospect?{...item,prospect:{...item.prospect,lastContactedAt:now}}:item),
+          deals:current.deals.map(item=>item.contactId===contactId&&contactedStage?{...item,stageId:contactedStage.id,updatedAt:now}:item),
+          tasks,
+        };
+      }),
     };
   },[data,persistenceError,tenant]);
 
