@@ -81,7 +81,15 @@ export function buildDemoLinks(input:DemoInput){
   };
 }
 
-export function buildOutreachMessage(businessName:string,customerUrl:string){
+export function buildOutreachMessages(businessName:string,customerUrl:string){
   const name=businessName.trim()||'tu negocio';
-  return `Hola. Vi ${name} y armé una muestra rápida de cómo podría verse con catálogo y pedidos directos:\n${customerUrl}\n\nEs una demo visual con productos de ejemplo. Si te sirve, la adapto a tus productos reales.`;
+  return [
+    `Hola. Vi ${name} y armé una muestra rápida de cómo podría verse con catálogo y pedidos directos:\n${customerUrl}\n\nEs una demo visual con productos de ejemplo. Si te sirve, la adapto a tus productos reales.`,
+    `Buenas! Estuve viendo ${name} y armé una demo rápida para mostrarte una idea:\n${customerUrl}\n\nLa idea es que catálogo, consultas y pedidos queden mucho más simples desde un solo link.`,
+    `Hola! Te armé esto tomando ${name} como ejemplo:\n${customerUrl}\n\nNo hace falta cambiar cómo venden hoy: sirve para ordenar productos y mandar a la gente directo al producto o pedido que busca. Si te interesa, te muestro cómo quedaría con su material real.`,
+  ];
+}
+
+export function buildOutreachMessage(businessName:string,customerUrl:string){
+  return buildOutreachMessages(businessName,customerUrl)[0];
 }
