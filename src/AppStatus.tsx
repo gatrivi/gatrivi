@@ -34,12 +34,12 @@ function WorkspaceBar(){
 }
 
 function ReleaseNotice(){
-  useLocation();
+  const location=useLocation();
   const [open,setOpen]=useState(false);
   useEffect(()=>{
-    if(!getSession())return;
+    if(!getSession()){setOpen(false);return;}
     try{setOpen(localStorage.getItem(releaseKey)!=='1')}catch{setOpen(true)}
-  },[]);
+  },[location.pathname]);
   if(!open||!getSession())return null;
   const dismiss=()=>{
     try{localStorage.setItem(releaseKey,'1')}catch{/* non-critical */}
