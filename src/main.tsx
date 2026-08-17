@@ -3,6 +3,7 @@ import {createRoot} from 'react-dom/client';
 import {BrowserRouter} from 'react-router-dom';
 import App from './App';
 import {importJobApplication} from './services/storage';
+import {installWorkspaceUi} from './services/workspaceUi';
 import './styles.css';
 import './dark-default.css';
 
@@ -36,4 +37,5 @@ function handleCatresumakerBridge(){
 
 if(!handleCatresumakerBridge()){
   createRoot(root).render(<StrictMode><BrowserRouter><App/></BrowserRouter></StrictMode>);
+  installWorkspaceUi();
 }
