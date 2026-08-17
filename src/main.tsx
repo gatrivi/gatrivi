@@ -2,8 +2,10 @@ import {StrictMode} from 'react';
 import {createRoot} from 'react-dom/client';
 import {BrowserRouter} from 'react-router-dom';
 import App from './App';
+import AppStatus from './AppStatus';
 import {importJobApplication} from './services/storage';
 import './styles.css';
+import './ux.css';
 
 const root=document.getElementById('root')!;
 
@@ -34,5 +36,5 @@ function handleCatresumakerBridge(){
 }
 
 if(!handleCatresumakerBridge()){
-  createRoot(root).render(<StrictMode><BrowserRouter><App/></BrowserRouter></StrictMode>);
+  createRoot(root).render(<StrictMode><BrowserRouter><AppStatus/><App/></BrowserRouter></StrictMode>);
 }
