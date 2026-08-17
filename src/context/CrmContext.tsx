@@ -1,6 +1,7 @@
 import {createContext,useContext,useEffect,useMemo,useState,type ReactNode} from 'react';
 import type {CrmData,Deal,ProspectMeta,Task} from '../types';
 import {getRepository} from '../services/repository';
+import {defaultStages} from '../services/storage';
 
 type LeadInput={name:string;company:string;phone:string;email:string;dealTitle:string;value:number};
 type ProspectInput={name:string;company:string;phone:string;email:string;value:number;prospect:Omit<ProspectMeta,'createdAt'>};
@@ -21,6 +22,19 @@ type Ctx=CrmData & {
 const Crm=createContext<Ctx|null>(null);
 const id=(prefix:string)=>`${prefix}-${globalThis.crypto?.randomUUID?.()??Date.now().toString(36)}`;
 
+function ensureOutreachStages(data:CrmData,tenant:string):CrmData{
+  if(tenant==='jobs')return data;
+  const desired=defaultStages(tenant);
+  const byId=new Map(data.stages.map(stage=>[stage.id,stage]));
+  const desiredIds=new Set(desired.map(stage=>stage.id));
+  const stages=desired.map(stage=>{
+    const existing=byId.get(stage.id);
+    return existing?{...existing,order:stage.order}:stage;
+  });
+  const extras=data.stages.filter(stage=>!desiredIds.has(stage.id)).map((stage,index)=>({...stage,order:desired.length+index}));
+  return {...data,stages:[...stages,...extras]};
+}
+
 export function CrmProvider({tenant,children}:{tenant:string;children:ReactNode}){
   const repository=useMemo(()=>getRepository(tenant),[tenant]);
   const [data,setData]=useState<CrmData|null>(null);
@@ -31,7 +45,7 @@ export function CrmProvider({tenant,children}:{tenant:string;children:ReactNode}
     setData(null);
     setPersistenceError('');
     repository.load(tenant)
-      .then(next=>{if(active)setData(next)})
+      .then(next=>{if(active)setData(ensureOutreachStages(next,tenant))})
       .catch(error=>{
         console.error(error);
         if(active)setPersistenceError('No pudimos cargar los datos. Recargá la página para reintentar.');
