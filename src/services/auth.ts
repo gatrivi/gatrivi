@@ -48,6 +48,10 @@ export function getSession():SessionUser|null{
     return user.tenant?user:null;
   }catch{return null;}
 }
+export function getAvailableWorkspaces(){
+  const user=getSession();
+  return user?(allowedTenants[user.username.toLowerCase()]??[user.tenant]):[];
+}
 export function switchWorkspace(tenant:string):SessionUser|null{
   const user=getSession();
   if(!user)return null;
