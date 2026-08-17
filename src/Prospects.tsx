@@ -1,10 +1,10 @@
 import {useMemo,useState,type FormEvent} from 'react';
-import {Copy,ExternalLink,Share2,Target} from 'lucide-react';
+import {Check,Copy,ExternalLink,Instagram,MessageCircle,Share2,Target} from 'lucide-react';
 import {useSearchParams} from 'react-router-dom';
 import {useCrm} from './context/CrmContext';
 import {
   buildDemoLinks,
-  buildOutreachMessage,
+  buildOutreachMessages,
   prospectCategories,
   scoreProspect,
   type ProspectCategory,
@@ -36,8 +36,21 @@ const inputStyle={width:'100%',minHeight:42,border:'1px solid #d6d3d1',borderRad
 const labelStyle={display:'grid',gap:6,fontSize:12,fontWeight:700} as const;
 const gridStyle={display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))',gap:12} as const;
 
+function whatsappUrl(phone:string){
+  let digits=phone.replace(/\D/g,'');
+  if(digits.startsWith('0'))digits=digits.slice(1);
+  if(digits&&!digits.startsWith('54')&&digits.length>=10)digits=`54${digits}`;
+  return digits?`https://wa.me/${digits}`:'';
+}
+
+function instagramUrl(handle:string|undefined,sourceUrl:string,platform:ProspectPlatform){
+  const clean=(handle??'').trim().replace(/^@/,'');
+  if(clean)return `https://instagram.com/${clean}`;
+  return platform==='instagram'?sourceUrl:'';
+}
+
 export default function Prospects(){
-  const {contacts,addProspect,tenant}=useCrm();
+  const {contacts,deals,stages,tasks,addProspect,markProspectContacted,setProspectStage,tenant}=useCrm();
   const [params]=useSearchParams();
   const initial=inferProspectPrefill(sharedPayloadFromSearch(params));
   const shared=params.get('shared')==='1'||Boolean(params.get('source')||params.get('url'));
@@ -57,8 +70,10 @@ export default function Prospects(){
 
   const qualification=useMemo(()=>scoreProspect(signals),[signals]);
   const demoLinks=useMemo(()=>buildDemoLinks({businessName:company||'Tu negocio',area,category,color}),[company,area,category,color]);
-  const outreach=useMemo(()=>buildOutreachMessage(company,demoLinks.customerUrl),[company,demoLinks.customerUrl]);
+  const outreachMessages=useMemo(()=>buildOutreachMessages(company,demoLinks.customerUrl),[company,demoLinks.customerUrl]);
+  const outreach=outreachMessages[0];
   const prospects=contacts.filter(contact=>contact.prospect).sort((a,b)=>(b.prospect?.score??0)-(a.prospect?.score??0));
+  const orderedStages=stages.slice().sort((a,b)=>a.order-b.order);
   const crmCaptureUrl=typeof window==='undefined'?'':`${window.location.origin}/t/${tenant}/prospects`;
   const bookmarklet=`javascript:(()=>{const u=new URL(${JSON.stringify(crmCaptureUrl)});u.searchParams.set('source',location.href);u.searchParams.set('title',document.title);location.href=u.toString()})()`;
 
@@ -69,6 +84,10 @@ export default function Prospects(){
       setCopied(key);
       window.setTimeout(()=>setCopied(current=>current===key?'':current),1500);
     }catch{setCopied('')}
+  };
+  const openAndCopy=(key:string,url:string,message:string)=>{
+    window.open(url,'_blank','noopener,noreferrer');
+    void copy(key,message);
   };
 
   const submit=(event:FormEvent)=>{
@@ -94,6 +113,7 @@ export default function Prospects(){
         demoUrl:demoLinks.customerUrl,
         ownerUrl:demoLinks.ownerUrl,
         outreachMessage:outreach,
+        outreachMessages,
       },
     });
     setSaved(company.trim());
@@ -137,7 +157,10 @@ export default function Prospects(){
           <span style={{fontSize:13,overflowWrap:'anywhere'}}>{demoLinks.customerUrl}</span>
           <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
             <a className="secondary" href={demoLinks.customerUrl} target="_blank" rel="noreferrer"><ExternalLink size={15}/> Ver demo</a>
-            <button className="secondary" type="button" onClick={()=>copy('draft',outreach)}><Copy size={15}/> {copied==='draft'?'Copiado':'Copiar pitch'}</button>
+            {outreachMessages.map((message,index)=>{
+              const key=`draft-${index}`;
+              return <button className="secondary" key={key} type="button" onClick={()=>copy(key,message)}><Copy size={15}/> {copied===key?'Copiado':`Pitch ${index+1}`}</button>;
+            })}
           </div>
         </div>
 
@@ -158,19 +181,35 @@ export default function Prospects(){
 
     <section className="panel wide">
       <div className="panel-title"><div><span className="eyebrow">COLA COMERCIAL</span><h2>Prospectos TMM</h2></div><b>{prospects.length}</b></div>
-      {!prospects.length?<div className="empty">Todavía no capturaste prospectos.</div>:prospects.map(contact=>{
+      {!prospects.length?<div className="empty">Todavía no capturaste prospectos.</div>:<div style={{display:'grid',gap:10}}>{prospects.map(contact=>{
         const prospect=contact.prospect!;
-        return <div className="stage-row" key={contact.id} style={{gridTemplateColumns:'minmax(150px,1.2fr) 80px minmax(180px,1fr) auto'}}>
-          <span><b>{contact.company||contact.name}</b><small style={{display:'block'}}>{prospect.socialHandle?`${prospect.socialHandle} · `:''}{prospect.platform} · {prospect.area}</small></span>
-          <b>{prospect.score}/100</b>
-          <span style={{fontSize:12}}>{prospect.scoreReasons.slice(0,2).join(' · ')}</span>
-          <span style={{display:'flex',gap:6,flexWrap:'wrap',justifyContent:'flex-end'}}>
+        const deal=deals.find(item=>item.contactId===contact.id);
+        const stage=stages.find(item=>item.id===deal?.stageId);
+        const nextTask=tasks.filter(task=>task.contactId===contact.id&&!task.done).sort((a,b)=>a.dueDate.localeCompare(b.dueDate))[0];
+        const messages=prospect.outreachMessages?.length?prospect.outreachMessages:buildOutreachMessages(contact.company||contact.name,prospect.demoUrl);
+        const wa=whatsappUrl(contact.phone);
+        const ig=instagramUrl(prospect.socialHandle,prospect.sourceUrl,prospect.platform as ProspectPlatform);
+        return <div className="note" key={contact.id} style={{display:'grid',gap:10}}>
+          <div style={{display:'flex',justifyContent:'space-between',gap:12,alignItems:'flex-start',flexWrap:'wrap'}}>
+            <span><b>{contact.company||contact.name}</b><small style={{display:'block'}}>{prospect.socialHandle?`${prospect.socialHandle} · `:''}{prospect.platform} · {prospect.area} · fit {prospect.score}/100</small></span>
+            <label style={{...labelStyle,minWidth:150}}>Etapa<select style={{...inputStyle,minHeight:36}} value={stage?.name??orderedStages[0]?.name??''} onChange={event=>setProspectStage(contact.id,event.target.value)}>{orderedStages.map(item=><option key={item.id} value={item.name}>{item.name}</option>)}</select></label>
+          </div>
+
+          <small><b>Próxima:</b> {nextTask?`${nextTask.title} · ${nextTask.dueDate}`:'sin acción pendiente'}{prospect.lastContactedAt?` · último contacto ${new Date(prospect.lastContactedAt).toLocaleDateString('es-AR')}`:''}</small>
+
+          <div style={{display:'flex',gap:7,flexWrap:'wrap'}}>
             {prospect.sourceUrl&&<a className="link" href={prospect.sourceUrl} target="_blank" rel="noreferrer">Fuente ↗</a>}
             <a className="link" href={prospect.demoUrl} target="_blank" rel="noreferrer">Demo ↗</a>
-            <button className="link" type="button" onClick={()=>copy(contact.id,prospect.outreachMessage)}>{copied===contact.id?'Copiado':'Copiar DM'}</button>
-          </span>
+            {ig&&<button className="secondary" type="button" onClick={()=>openAndCopy(`${contact.id}-ig`,ig,messages[0])}><Instagram size={15}/> {copied===`${contact.id}-ig`?'Copiado':'IG + copiar'}</button>}
+            {wa&&<button className="secondary" type="button" onClick={()=>openAndCopy(`${contact.id}-wa`,wa,messages[0])}><MessageCircle size={15}/> {copied===`${contact.id}-wa`?'Copiado':'WA + copiar'}</button>}
+            {messages.slice(0,3).map((message,index)=>{
+              const key=`${contact.id}-dm-${index}`;
+              return <button className="secondary" key={key} type="button" onClick={()=>copy(key,message)}><Copy size={15}/> {copied===key?'Copiado':`DM ${index+1}`}</button>;
+            })}
+            <button className="primary" type="button" onClick={()=>markProspectContacted(contact.id)}><Check size={15}/> {prospect.lastContactedAt?'Enviado ✓':'Marcar enviado'}</button>
+          </div>
         </div>;
-      })}
+      })}</div>}
     </section>
   </div>;
 }
