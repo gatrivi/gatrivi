@@ -1,6 +1,7 @@
 import {createContext,useContext,useEffect,useMemo,useState,type ReactNode} from 'react';
 import type {CrmData,Deal,ProspectMeta,Task} from '../types';
 import {getRepository} from '../services/repository';
+import {stageIdByName} from '../services/outboundFunnel';
 
 type LeadInput={name:string;company:string;phone:string;email:string;dealTitle:string;value:number};
 type ProspectInput={name:string;company:string;phone:string;email:string;value:number;prospect:Omit<ProspectMeta,'createdAt'>};
@@ -61,7 +62,7 @@ export function CrmProvider({tenant,children}:{tenant:string;children:ReactNode}
         const now=new Date().toISOString();
         const contactId=id('contact');
         const dealId=id('deal');
-        const stageId=current.stages[0]?.id;
+        const stageId=stageIdByName(current.stages,'Encontrado')??current.stages[0]?.id;
         if(!stageId)return current;
         return {
           ...current,
@@ -75,7 +76,8 @@ export function CrmProvider({tenant,children}:{tenant:string;children:ReactNode}
         const contactId=id('contact');
         const dealId=id('deal');
         const taskId=id('task');
-        const stageId=current.stages[0]?.id;
+        const targetStage=input.prospect.score>=55?'Demo lista':'Encontrado';
+        const stageId=stageIdByName(current.stages,targetStage)??current.stages[0]?.id;
         if(!stageId)return current;
         const company=input.company.trim()||input.name.trim();
         const contactName=input.name.trim()||company;
@@ -108,8 +110,8 @@ export function CrmProvider({tenant,children}:{tenant:string;children:ReactNode}
             tenantId:tenant,
             contactId,
             dealId,
-            title:`Contactar a ${company}`,
-            dueDate:new Date(Date.now()+86400000).toISOString().slice(0,10),
+            title:input.prospect.score>=55?`Enviar demo a ${company}`:`Revisar fit de ${company}`,
+            dueDate:new Date().toISOString().slice(0,10),
             done:false,
           }],
         };
