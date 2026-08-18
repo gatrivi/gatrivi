@@ -15,12 +15,13 @@ type Ctx=CrmData & {
   addLead:(input:LeadInput)=>void;
   addProspect:(input:ProspectInput)=>void;
   addTask:(input:TaskInput)=>void;
-  setProspectStage:(contactId:string,stageName:string)=>void;
+  setProspectStage:(contactId:string,stageId:string)=>void;
   markProspectContacted:(contactId:string)=>void;
 };
 
 const Crm=createContext<Ctx|null>(null);
 const id=(prefix:string)=>`${prefix}-${globalThis.crypto?.randomUUID?.()??Date.now().toString(36)}`;
+const SALES_STAGE={NEW:'stage-1',CONTACTED:'stage-2'} as const;
 
 function ensureOutreachStages(data:CrmData,tenant:string):CrmData{
   if(tenant==='jobs')return data;
@@ -91,7 +92,7 @@ export function CrmProvider({tenant,children}:{tenant:string;children:ReactNode}
         const contactId=id('contact');
         const dealId=id('deal');
         const taskId=id('task');
-        const stageId=current.stages.find(stage=>stage.name==='Nuevo')?.id??current.stages[0]?.id;
+        const stageId=current.stages.find(stage=>stage.id===SALES_STAGE.NEW)?.id??current.stages[0]?.id;
         if(!stageId)return current;
         const company=input.company.trim()||input.name.trim();
         const contactName=input.name.trim()||company;
@@ -131,12 +132,10 @@ export function CrmProvider({tenant,children}:{tenant:string;children:ReactNode}
         };
       }),
       addTask:input=>setData(current=>current?({...current,tasks:[...current.tasks,{id:id('task'),tenantId:tenant,contactId:input.contactId||undefined,title:input.title.trim(),dueDate:input.dueDate,done:false}]}):current),
-      setProspectStage:(contactId,stageName)=>setData(current=>{
-        if(!current)return current;
-        const stage=current.stages.find(item=>item.name===stageName);
-        if(!stage)return current;
+      setProspectStage:(contactId,stageId)=>setData(current=>{
+        if(!current||!current.stages.some(stage=>stage.id===stageId))return current;
         const now=new Date().toISOString();
-        return {...current,deals:current.deals.map(deal=>deal.contactId===contactId?{...deal,stageId:stage.id,updatedAt:now}:deal)};
+        return {...current,deals:current.deals.map(deal=>deal.contactId===contactId?{...deal,stageId,updatedAt:now}:deal)};
       }),
       markProspectContacted:contactId=>setData(current=>{
         if(!current)return current;
@@ -144,7 +143,7 @@ export function CrmProvider({tenant,children}:{tenant:string;children:ReactNode}
         const contact=current.contacts.find(item=>item.id===contactId);
         if(!contact?.prospect)return current;
         const deal=current.deals.find(item=>item.contactId===contactId);
-        const contactedStage=current.stages.find(stage=>stage.name==='Contactado');
+        const contactedStage=current.stages.find(stage=>stage.id===SALES_STAGE.CONTACTED);
         const company=contact.company||contact.name;
         let tasks=current.tasks.map(task=>task.contactId===contactId&&!task.done&&task.title.toLowerCase().startsWith('contactar')?{...task,done:true}:task);
         const hasOpenFollowup=tasks.some(task=>task.contactId===contactId&&!task.done&&task.title.toLowerCase().includes('follow-up'));
