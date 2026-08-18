@@ -22,7 +22,8 @@ export interface ProspectMeta {
   createdAt:string;
 }
 
-export interface Contact { id:string; tenantId:string; name:string; phone:string; email:string; company:string; notes:string; createdAt:string; prospect?:ProspectMeta }
+export interface ContactLocation { lat?:number; lng?:number; address?:string }
+export interface Contact { id:string; tenantId:string; name:string; phone:string; email:string; company:string; notes:string; createdAt:string; location?:ContactLocation; prospect?:ProspectMeta }
 export interface Stage { id:string; tenantId:string; name:string; order:number; color:string }
 export interface Deal { id:string; tenantId:string; contactId:string; title:string; stageId:string; value:number; currency:string; createdAt:string; updatedAt:string }
 export interface Task { id:string; tenantId:string; contactId?:string; dealId?:string; title:string; dueDate:string; done:boolean }
