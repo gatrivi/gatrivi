@@ -1,9 +1,9 @@
 import {createContext,useContext,useEffect,useMemo,useState,type ReactNode} from 'react';
-import type {CrmData,Deal,ProspectMeta,Task} from '../types';
+import type {ContactLocation,CrmData,Deal,ProspectMeta,Task} from '../types';
 import {getRepository} from '../services/repository';
 import {stageIdByName} from '../services/outboundFunnel';
 
-type LeadInput={name:string;company:string;phone:string;email:string;dealTitle:string;value:number};
+type LeadInput={name:string;company:string;phone:string;email:string;dealTitle:string;value:number;location?:ContactLocation};
 type ProspectInput={name:string;company:string;phone:string;email:string;value:number;prospect:Omit<ProspectMeta,'createdAt'>};
 type TaskInput={title:string;dueDate:string;contactId?:string};
 type Ctx=CrmData & {
@@ -73,7 +73,7 @@ export function CrmProvider({tenant,children}:{tenant:string;children:ReactNode}
         if(!stageId)return current;
         return {
           ...current,
-          contacts:[...current.contacts,{id:contactId,tenantId:tenant,name:input.name.trim(),phone:input.phone.trim(),email:input.email.trim(),company:input.company.trim(),notes:'Lead cargado desde alta rápida.',createdAt:now}],
+          contacts:[...current.contacts,{id:contactId,tenantId:tenant,name:input.name.trim(),phone:input.phone.trim(),email:input.email.trim(),company:input.company.trim(),notes:'Lead cargado desde alta rápida.',createdAt:now,location:input.location}],
           deals:[...current.deals,{id:dealId,tenantId:tenant,contactId,title:input.dealTitle.trim(),stageId,value:input.value,currency:'ARS',createdAt:now,updatedAt:now}],
         };
       }),
