@@ -5,6 +5,7 @@ import {authenticate,getSession,signOut,startSession} from './services/auth';
 import {registerCrmPwa} from './services/pwa';
 import Prospects from './Prospects';
 import ShareTarget from './ShareTarget';
+import type {ContactLocation} from './types';
 import {useEffect,useState,type DragEvent,type FormEvent,type ReactNode} from 'react';
 
 const money=(n:number)=>new Intl.NumberFormat('es-AR',{style:'currency',currency:'ARS',maximumFractionDigits:0}).format(n);
@@ -116,7 +117,28 @@ function QuickLeadModal({open,onClose}:{open:boolean;onClose:()=>void}){
   const [email,setEmail]=useState('');
   const [dealTitle,setDealTitle]=useState('');
   const [value,setValue]=useState('');
+  const [location,setLocation]=useState<ContactLocation|undefined>();
+  const [addressMode,setAddressMode]=useState(false);
+  const [locationStatus,setLocationStatus]=useState('');
   if(!open)return null;
+  const useGps=()=>{
+    if(!navigator.geolocation){setLocationStatus('Este dispositivo no ofrece ubicación.');return}
+    setLocationStatus('Buscando ubicación…');
+    navigator.geolocation.getCurrentPosition(
+      ({coords})=>{
+        setLocation({lat:Number(coords.latitude.toFixed(6)),lng:Number(coords.longitude.toFixed(6))});
+        setAddressMode(false);
+        setLocationStatus('GPS guardado ✓');
+      },
+      error=>setLocationStatus(error.code===1?'Permiso de ubicación denegado.':'No pude obtener la ubicación.'),
+      {enableHighAccuracy:true,timeout:10000,maximumAge:60000},
+    );
+  };
+  const useAddress=()=>{
+    setAddressMode(true);
+    setLocation(current=>current?.address?current:undefined);
+    setLocationStatus('');
+  };
   const submit=(event:FormEvent)=>{
     event.preventDefault();
     const trimmedCompany=company.trim();
@@ -124,16 +146,23 @@ function QuickLeadModal({open,onClose}:{open:boolean;onClose:()=>void}){
     const leadName=trimmedName||trimmedCompany;
     const leadTitle=dealTitle.trim()||trimmedCompany||trimmedName;
     if(!leadName||!leadTitle)return;
-    addLead({name:leadName,company:trimmedCompany,phone:phone.trim(),email:email.trim(),dealTitle:leadTitle,value:Number(value)||0});
-    setName('');setCompany('');setPhone('');setEmail('');setDealTitle('');setValue('');
+    const savedLocation=location?.address?.trim()?{address:location.address.trim()}:location?.lat!=null&&location.lng!=null?location:undefined;
+    addLead({name:leadName,company:trimmedCompany,phone:phone.trim(),email:email.trim(),dealTitle:leadTitle,value:Number(value)||0,location:savedLocation});
+    setName('');setCompany('');setPhone('');setEmail('');setDealTitle('');setValue('');setLocation(undefined);setAddressMode(false);setLocationStatus('');
     onClose();
   };
   return <div className="modal-backdrop" onMouseDown={event=>{if(event.target===event.currentTarget)onClose()}}>
     <form className="modal" onSubmit={submit}>
       <div className="modal-head"><div><span className="eyebrow">ALTA RÁPIDA</span><h2>Nuevo negocio</h2></div><button className="icon-button" type="button" aria-label="Cerrar" onClick={onClose}><X size={16}/></button></div>
-      <p className="modal-hint">Con nombre o empresa alcanza. Sumá WhatsApp ahora y completá el resto después.</p>
+      <p className="modal-hint">Con nombre o empresa alcanza. Sumá WhatsApp y ubicación si los tenés.</p>
       <label>Nombre o empresa<input autoFocus autoComplete="organization" enterKeyHint="next" value={company} onChange={event=>setCompany(event.target.value)} placeholder="Ej. Panadería Roma" required/></label>
       <label>Teléfono / WhatsApp<input type="tel" inputMode="tel" autoComplete="tel" enterKeyHint="done" value={phone} onChange={event=>setPhone(event.target.value)} placeholder="11 2345 6789"/></label>
+      <div style={{display:'flex',gap:8,flexWrap:'wrap',margin:'4px 0 8px'}}>
+        <button className={location?.lat!=null?'secondary':'ghost'} type="button" onClick={useGps}>📍 Usar GPS</button>
+        <button className={addressMode?'secondary':'ghost'} type="button" onClick={useAddress}>✏️ Dirección</button>
+      </div>
+      {addressMode&&<label>Dirección del local<input autoComplete="street-address" enterKeyHint="done" value={location?.address??''} onChange={event=>setLocation({address:event.target.value})} placeholder="Ej. Av. Maipú 1234, Olivos"/></label>}
+      {(locationStatus||location?.address)&&<small style={{display:'block',margin:'-2px 0 8px',color:'#8f99aa'}}>{locationStatus||`Dirección: ${location?.address}`}</small>}
       <details className="form-details">
         <summary>Más datos · opcional</summary>
         <label>Persona de contacto<input autoComplete="name" value={name} onChange={event=>setName(event.target.value)} placeholder="Ej. Juan Pérez"/></label>
@@ -148,7 +177,7 @@ function QuickLeadModal({open,onClose}:{open:boolean;onClose:()=>void}){
 function Contacts(){
   const {contacts,deals,tasks,tenant}=useCrm();
   const [q,setQ]=useState('');
-  const filtered=contacts.filter(contact=>(contact.name+contact.company+contact.email+contact.phone).toLowerCase().includes(q.toLowerCase()));
+  const filtered=contacts.filter(contact=>(contact.name+contact.company+contact.email+contact.phone+(contact.location?.address??'')).toLowerCase().includes(q.toLowerCase()));
   return <section className="panel wide">
     <div className="panel-title"><div><span className="eyebrow">AGENDA</span><h2>Contactos</h2></div><div className="search"><Search size={17}/><input inputMode="search" enterKeyHint="search" placeholder="Buscar contacto..." value={q} onChange={event=>setQ(event.target.value)}/></div></div>
     {!contacts.length?<Empty>Sin contactos. Cargá tu primer negocio desde el botón superior.</Empty>:!filtered.length?<Empty>No hay resultados para “{q}”.</Empty>:<div className="contact-list">{filtered.map(contact=><article className="contact" key={contact.id}><div className="avatar large">{contact.name.split(' ').map(part=>part[0]).join('').slice(0,2)}</div><div><b>{contact.name}</b><p>{contact.company||'Sin empresa'}{contact.email?` · ${contact.email}`:''}</p><small>{deals.filter(deal=>deal.contactId===contact.id).length} negocios · {tasks.filter(task=>task.contactId===contact.id&&!task.done).length} tareas pendientes</small></div><NavLink className="link" to={`/t/${tenant}/contacts/${contact.id}`}>Ver detalle →</NavLink></article>)}</div>}
@@ -162,10 +191,15 @@ function ContactDetail(){
   if(!contact)return <section className="panel"><Empty>Contacto no encontrado.</Empty></section>;
   const linkedDeals=deals.filter(deal=>deal.contactId===contact.id);
   const linkedTasks=tasks.filter(task=>task.contactId===contact.id);
+  const mapHref=contact.location?.lat!=null&&contact.location.lng!=null
+    ?`https://www.google.com/maps?q=${contact.location.lat},${contact.location.lng}`
+    :contact.location?.address?`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(contact.location.address)}`:'';
+  const locationLabel=contact.location?.address??(contact.location?.lat!=null&&contact.location.lng!=null?`${contact.location.lat}, ${contact.location.lng}`:'');
   return <section className="panel wide detail">
     <NavLink className="link" to={`/t/${tenant}/contacts`}>← Volver a contactos</NavLink>
     <div className="detail-head"><div className="avatar large">{contact.name.split(' ').map(part=>part[0]).join('').slice(0,2)}</div><div><span className="eyebrow">CONTACTO</span><h2>{contact.name}</h2><p>{contact.company||'Sin empresa'}{contact.email?` · ${contact.email}`:''}{contact.phone?` · ${contact.phone}`:''}</p></div></div>
     <p className="note">{contact.notes||'Sin notas.'}</p>
+    {locationLabel&&<div className="stage-row"><span>📍 {locationLabel}</span>{mapHref&&<a className="link" href={mapHref} target="_blank" rel="noreferrer">Abrir en Maps ↗</a>}</div>}
     {contact.prospect&&<><h3>Prospecto TMM · {contact.prospect.score}/100</h3><div className="stage-row"><span>{contact.prospect.socialHandle?`${contact.prospect.socialHandle} · `:''}{contact.prospect.scoreReasons.join(' · ')}</span><a className="link" href={contact.prospect.demoUrl} target="_blank" rel="noreferrer">Abrir demo →</a></div></>}
     <h3>Negocios vinculados</h3>{linkedDeals.length?linkedDeals.map(deal=><div className="stage-row" key={deal.id}><span>{deal.title}</span><b>{money(deal.value)}</b></div>):<Empty>Sin negocios vinculados.</Empty>}
     <h3>Tareas vinculadas</h3>{linkedTasks.length?linkedTasks.map(task=><div className="stage-row" key={task.id}><span>{task.title}</span><b>{task.done?'Lista':'Pendiente'}</b></div>):<Empty>Sin tareas vinculadas.</Empty>}
