@@ -123,7 +123,7 @@ export function CrmProvider({tenant,children}:{tenant:string;children:ReactNode}
           }],
         };
       }),
-      addTask:input=>setData(current=>current?({...current,tasks:[...current.tasks,{id:id('task'),tenantId:tenant,contactId:input.contactId||undefined,title:input.title.trim(),dueDate:input.dueDate,done:false}]}):current),
+      addTask:input=>setData(current=>current?({...current,tasks:[...current.tasks,{id:id('task'),tenantId:tenant,...(input.contactId?{contactId:input.contactId}:{}),title:input.title.trim(),dueDate:input.dueDate,done:false}]}):current),
     };
   },[data,persistenceError,tenant]);
 
