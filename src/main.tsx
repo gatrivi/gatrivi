@@ -5,7 +5,6 @@ import App from './App';
 import {importJobApplication} from './services/storage';
 import {installWorkspaceUi} from './services/workspaceUi';
 import './styles.css';
-import './dark-default.css';
 
 const root=document.getElementById('root')!;
 
