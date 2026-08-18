@@ -1,7 +1,7 @@
 import {createContext,useContext,useEffect,useMemo,useState,type ReactNode} from 'react';
 import type {CrmData,Deal,ProspectMeta,Task} from '../types';
 import {getRepository} from '../services/repository';
-import {defaultStages} from '../services/storage';
+import {stageIdByName} from '../services/outboundFunnel';
 
 type LeadInput={name:string;company:string;phone:string;email:string;dealTitle:string;value:number};
 type ProspectInput={name:string;company:string;phone:string;email:string;value:number;prospect:Omit<ProspectMeta,'createdAt'>};
@@ -15,26 +15,10 @@ type Ctx=CrmData & {
   addLead:(input:LeadInput)=>void;
   addProspect:(input:ProspectInput)=>void;
   addTask:(input:TaskInput)=>void;
-  setProspectStage:(contactId:string,stageId:string)=>void;
-  markProspectContacted:(contactId:string)=>void;
 };
 
 const Crm=createContext<Ctx|null>(null);
 const id=(prefix:string)=>`${prefix}-${globalThis.crypto?.randomUUID?.()??Date.now().toString(36)}`;
-const SALES_STAGE={NEW:'stage-1',CONTACTED:'stage-2'} as const;
-
-function ensureOutreachStages(data:CrmData,tenant:string):CrmData{
-  if(tenant==='jobs')return data;
-  const desired=defaultStages(tenant);
-  const byId=new Map(data.stages.map(stage=>[stage.id,stage]));
-  const desiredIds=new Set(desired.map(stage=>stage.id));
-  const stages=desired.map(stage=>{
-    const existing=byId.get(stage.id);
-    return existing?{...existing,order:stage.order}:stage;
-  });
-  const extras=data.stages.filter(stage=>!desiredIds.has(stage.id)).map((stage,index)=>({...stage,order:desired.length+index}));
-  return {...data,stages:[...stages,...extras]};
-}
 
 export function CrmProvider({tenant,children}:{tenant:string;children:ReactNode}){
   const repository=useMemo(()=>getRepository(tenant),[tenant]);
@@ -46,13 +30,20 @@ export function CrmProvider({tenant,children}:{tenant:string;children:ReactNode}
     setData(null);
     setPersistenceError('');
     repository.load(tenant)
-      .then(next=>{if(active)setData(ensureOutreachStages(next,tenant))})
+      .then(next=>{if(active)setData(next)})
       .catch(error=>{
         console.error(error);
         if(active)setPersistenceError('No pudimos cargar los datos. Recargá la página para reintentar.');
       });
     return()=>{active=false};
   },[repository,tenant]);
+
+  useEffect(()=>{
+    if(!data||tenant==='jobs'||data.contacts.some(contact=>contact.prospect))return;
+    if(window.location.pathname===`/t/${tenant}/dashboard`){
+      window.location.replace(`/t/${tenant}/prospects`);
+    }
+  },[data,tenant]);
 
   useEffect(()=>{
     if(!data)return;
@@ -78,7 +69,7 @@ export function CrmProvider({tenant,children}:{tenant:string;children:ReactNode}
         const now=new Date().toISOString();
         const contactId=id('contact');
         const dealId=id('deal');
-        const stageId=current.stages[0]?.id;
+        const stageId=stageIdByName(current.stages,'Encontrado')??current.stages[0]?.id;
         if(!stageId)return current;
         return {
           ...current,
@@ -92,7 +83,8 @@ export function CrmProvider({tenant,children}:{tenant:string;children:ReactNode}
         const contactId=id('contact');
         const dealId=id('deal');
         const taskId=id('task');
-        const stageId=current.stages.find(stage=>stage.id===SALES_STAGE.NEW)?.id??current.stages[0]?.id;
+        const targetStage=input.prospect.score>=55?'Demo lista':'Encontrado';
+        const stageId=stageIdByName(current.stages,targetStage)??current.stages[0]?.id;
         if(!stageId)return current;
         const company=input.company.trim()||input.name.trim();
         const contactName=input.name.trim()||company;
@@ -125,46 +117,13 @@ export function CrmProvider({tenant,children}:{tenant:string;children:ReactNode}
             tenantId:tenant,
             contactId,
             dealId,
-            title:`Contactar a ${company}`,
-            dueDate:new Date(Date.now()+86400000).toISOString().slice(0,10),
+            title:input.prospect.score>=55?`Enviar demo a ${company}`:`Revisar fit de ${company}`,
+            dueDate:new Date().toISOString().slice(0,10),
             done:false,
           }],
         };
       }),
       addTask:input=>setData(current=>current?({...current,tasks:[...current.tasks,{id:id('task'),tenantId:tenant,contactId:input.contactId||undefined,title:input.title.trim(),dueDate:input.dueDate,done:false}]}):current),
-      setProspectStage:(contactId,stageId)=>setData(current=>{
-        if(!current||!current.stages.some(stage=>stage.id===stageId))return current;
-        const now=new Date().toISOString();
-        return {...current,deals:current.deals.map(deal=>deal.contactId===contactId?{...deal,stageId,updatedAt:now}:deal)};
-      }),
-      markProspectContacted:contactId=>setData(current=>{
-        if(!current)return current;
-        const now=new Date().toISOString();
-        const contact=current.contacts.find(item=>item.id===contactId);
-        if(!contact?.prospect)return current;
-        const deal=current.deals.find(item=>item.contactId===contactId);
-        const contactedStage=current.stages.find(stage=>stage.id===SALES_STAGE.CONTACTED);
-        const company=contact.company||contact.name;
-        let tasks=current.tasks.map(task=>task.contactId===contactId&&!task.done&&task.title.toLowerCase().startsWith('contactar')?{...task,done:true}:task);
-        const hasOpenFollowup=tasks.some(task=>task.contactId===contactId&&!task.done&&task.title.toLowerCase().includes('follow-up'));
-        if(!hasOpenFollowup){
-          tasks=[...tasks,{
-            id:id('task'),
-            tenantId:tenant,
-            contactId,
-            dealId:deal?.id,
-            title:`Follow-up: ${company}`,
-            dueDate:new Date(Date.now()+2*86400000).toISOString().slice(0,10),
-            done:false,
-          }];
-        }
-        return {
-          ...current,
-          contacts:current.contacts.map(item=>item.id===contactId&&item.prospect?{...item,prospect:{...item.prospect,lastContactedAt:now}}:item),
-          deals:current.deals.map(item=>item.contactId===contactId&&contactedStage?{...item,stageId:contactedStage.id,updatedAt:now}:item),
-          tasks,
-        };
-      }),
     };
   },[data,persistenceError,tenant]);
 

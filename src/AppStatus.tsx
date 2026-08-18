@@ -7,8 +7,8 @@ const RELEASE={
   title:'Outreach TMM + mobile',
   changes:[
     'Prospectos TMM visibles en el espacio Ventas.',
-    'Cockpit de outreach con 3 DMs, IG/WA + copiar y seguimiento automático.',
-    'Pipeline con Respondió y Demo.',
+    'Cockpit guiado con demo, DM copiable y siguiente acción clara.',
+    'Funnel con Demo lista, DM enviado, Respondió y Llamada.',
     'Navegación móvil fija y usable con una mano.',
     'Captura de prospectos desde Compartir y cambio Ventas ↔ Jobs.',
   ],
@@ -17,7 +17,7 @@ const releaseKey=`crm-release-seen:${RELEASE.id}`;
 
 function goToTenant(tenant:string){
   const next=switchTenant(tenant);
-  if(next)window.location.assign(`/t/${next.tenant}/dashboard`);
+  if(next)window.location.assign(tenant==='jobs'?`/t/${next.tenant}/dashboard`:`/t/${next.tenant}/prospects`);
 }
 
 function WorkspaceBar(){

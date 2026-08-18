@@ -1,21 +1,13 @@
 import type { CrmData } from '../types';
+import {outboundStages} from './outboundFunnel';
 
 const key=(tenant:string)=>`crm-pyme:${tenant}`;
-const colors=['#2563eb','#8b5cf6','#0ea5e9','#14b8a6','#f59e0b','#10b981','#ef4444'];
-const salesStageDefs=[
-  ['stage-1','Nuevo'],
-  ['stage-2','Contactado'],
-  ['stage-6','Respondió'],
-  ['stage-7','Demo'],
-  ['stage-3','Propuesta'],
-  ['stage-4','Ganado'],
-  ['stage-5','Perdido'],
-] as const;
+const colors=['#2563eb','#8b5cf6','#f59e0b','#10b981','#ef4444','#64748b'];
 const jobStages=['Descubierto','Aplicado','Screening','Entrevista','Oferta','Rechazado'];
 
 export const defaultStages=(tenant='demo')=>tenant==='jobs'
   ? jobStages.map((name,i)=>({id:`stage-${i+1}`,tenantId:tenant,name,order:i,color:colors[i]}))
-  : salesStageDefs.map(([id,name],i)=>({id,tenantId:tenant,name,order:i,color:colors[i]}));
+  : outboundStages(tenant);
 
 export function seed(tenant='demo'):CrmData {
   const stages=defaultStages(tenant);
@@ -23,8 +15,7 @@ export function seed(tenant='demo'):CrmData {
 
   const now=new Date().toISOString();
   const contacts=['Ana García','Bruno López','Carla Méndez','Diego Ruiz','Estudio Norte'].map((name,i)=>({id:`contact-${i+1}`,tenantId:tenant,name,phone:`+54 341 555-${100+i}`,email:`${name.toLowerCase().replaceAll(' ','-')}@ejemplo.com`,company:i===4?'Estudio Norte':'Pyme '+(i+1),notes:'Contacto de demostración.',createdAt:now}));
-  const stageId=(name:string)=>stages.find(stage=>stage.name===name)?.id??stages[0].id;
-  const deals=[['Nuevo sitio web','Nuevo',850000],['Renovación anual','Contactado',420000],['Implementación CRM','Propuesta',1250000],['Servicio mensual','Ganado',280000],['Propuesta comercial','Propuesta',690000]].map((d,i)=>({id:`deal-${i+1}`,tenantId:tenant,contactId:contacts[i].id,title:d[0] as string,stageId:stageId(d[1] as string),value:d[2] as number,currency:'ARS',createdAt:now,updatedAt:now}));
+  const deals=[['Nuevo sitio web',0,850000],['Renovación anual',3,420000],['Implementación CRM',5,1250000],['Servicio mensual',6,280000],['Propuesta comercial',4,690000]].map((d,i)=>({id:`deal-${i+1}`,tenantId:tenant,contactId:contacts[i].id,title:d[0] as string,stageId:stages[d[1] as number].id,value:d[2] as number,currency:'ARS',createdAt:now,updatedAt:now}));
   const tasks=['Llamar a Ana','Enviar propuesta a Bruno','Revisar contrato','Preparar reunión'].map((title,i)=>({id:`task-${i+1}`,tenantId:tenant,contactId:contacts[i].id,dealId:deals[i]?.id,title,dueDate:new Date(Date.now()+(i+1)*86400000).toISOString().slice(0,10),done:i===3}));
   return {contacts,stages,deals,tasks};
 }

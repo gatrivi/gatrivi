@@ -4,7 +4,9 @@ import {BrowserRouter} from 'react-router-dom';
 import App from './App';
 import AppStatus from './AppStatus';
 import {importJobApplication} from './services/storage';
+import {installWorkspaceUi} from './services/workspaceUi';
 import './styles.css';
+import './dark-default.css';
 import './ux.css';
 
 const root=document.getElementById('root')!;
@@ -24,7 +26,7 @@ function handleCatresumakerBridge(){
       url:params.get('url')||undefined,
       status:params.get('status')||'applied',
     });
-    root.innerHTML='<div style="font:14px system-ui;padding:24px;color:#172033"><b>✓ Sincronizado con GATRIVI CRM</b><p id="bridge-detail" style="color:#667085"></p></div>';
+    root.innerHTML='<div style="font:14px system-ui;padding:24px;color:#f4f4f5;background:#0b0d12;min-height:100vh"><b>✓ Sincronizado con GATRIVI CRM</b><p id="bridge-detail" style="color:#a1a1aa"></p></div>';
     const detail=document.getElementById('bridge-detail');
     if(detail)detail.textContent=`${company} — ${title}`;
     if(params.get('close')==='1')setTimeout(()=>window.close(),350);
@@ -37,4 +39,5 @@ function handleCatresumakerBridge(){
 
 if(!handleCatresumakerBridge()){
   createRoot(root).render(<StrictMode><BrowserRouter><AppStatus/><App/></BrowserRouter></StrictMode>);
+  installWorkspaceUi();
 }

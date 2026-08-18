@@ -36,32 +36,38 @@ export function getSession():SessionUser|null{
     if(!raw)return null;
     const user=JSON.parse(raw) as SessionUser;
     if(!user?.username)return null;
-    const canonical=testUsers[user.username.toLowerCase()];
+    const normalized=user.username.toLowerCase();
+    const canonical=testUsers[normalized];
     if(canonical){
-      const tenants=allowedTenants[canonical.username]??[canonical.tenant];
+      const tenants=allowedTenants[normalized]??[canonical.tenant];
       const tenant=tenants.includes(user.tenant)?user.tenant:canonical.tenant;
-      const next={...canonical,tenant};
-      if(user.tenant!==next.tenant||user.name!==next.name)startSession(next);
-      return next;
+      const resolved={...canonical,tenant};
+      if(user.tenant!==resolved.tenant||user.name!==resolved.name)startSession(resolved);
+      return resolved;
     }
     return user.tenant?user:null;
   }catch{return null;}
 }
+export function getAvailableWorkspaces(){
+  const user=getSession();
+  return user?(allowedTenants[user.username.toLowerCase()]??[user.tenant]):[];
+}
+export function switchWorkspace(tenant:string):SessionUser|null{
+  const user=getSession();
+  if(!user)return null;
+  const allowed=allowedTenants[user.username.toLowerCase()];
+  if(allowed&&!allowed.includes(tenant))return null;
+  const next={...user,tenant};
+  startSession(next);
+  return next;
+}
 
+// Compatibility aliases used by the React workspace/status UI.
 export function getAllowedTenants(username:string){
   const normalized=username.trim().toLowerCase();
   return allowedTenants[normalized]??[getSession()?.tenant??'gatrivi'];
 }
-
-export function switchTenant(tenant:string){
-  const session=getSession();
-  if(!session)return null;
-  const tenants=getAllowedTenants(session.username);
-  if(!tenants.includes(tenant))return session;
-  const next={...session,tenant};
-  startSession(next);
-  return next;
-}
+export function switchTenant(tenant:string){return switchWorkspace(tenant)}
 
 export const isAuthenticated=()=>Boolean(getSession());
 export const signOut=()=>localStorage.removeItem(SESSION_KEY);
