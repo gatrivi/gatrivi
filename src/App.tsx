@@ -9,7 +9,9 @@ import {useEffect,useState,type DragEvent,type FormEvent,type ReactNode} from 'r
 
 const money=(n:number)=>new Intl.NumberFormat('es-AR',{style:'currency',currency:'ARS',maximumFractionDigits:0}).format(n);
 const todayLabel=()=>new Intl.DateTimeFormat('es-AR',{weekday:'long',day:'numeric',month:'long'}).format(new Date()).toUpperCase();
-const tomorrow=()=>new Date(Date.now()+86400000).toISOString().slice(0,10);
+const dateInputValue=(date:Date)=>{const offset=date.getTimezoneOffset()*60000;return new Date(date.getTime()-offset).toISOString().slice(0,10)};
+const today=()=>dateInputValue(new Date());
+const tomorrow=()=>dateInputValue(new Date(Date.now()+86400000));
 
 function Empty({children}:{children:ReactNode}){return <div className="empty">{children}</div>}
 
@@ -112,24 +114,33 @@ function QuickLeadModal({open,onClose}:{open:boolean;onClose:()=>void}){
   const [company,setCompany]=useState('');
   const [phone,setPhone]=useState('');
   const [email,setEmail]=useState('');
-  const [dealTitle,setDealTitle]=useState('Nuevo prospecto');
+  const [dealTitle,setDealTitle]=useState('');
   const [value,setValue]=useState('');
   if(!open)return null;
   const submit=(event:FormEvent)=>{
     event.preventDefault();
-    if(!name.trim()||!dealTitle.trim())return;
-    addLead({name,company,phone,email,dealTitle,value:Number(value)||0});
-    setName('');setCompany('');setPhone('');setEmail('');setDealTitle('Nuevo prospecto');setValue('');
+    const trimmedCompany=company.trim();
+    const trimmedName=name.trim();
+    const leadName=trimmedName||trimmedCompany;
+    const leadTitle=dealTitle.trim()||trimmedCompany||trimmedName;
+    if(!leadName||!leadTitle)return;
+    addLead({name:leadName,company:trimmedCompany,phone:phone.trim(),email:email.trim(),dealTitle:leadTitle,value:Number(value)||0});
+    setName('');setCompany('');setPhone('');setEmail('');setDealTitle('');setValue('');
     onClose();
   };
   return <div className="modal-backdrop" onMouseDown={event=>{if(event.target===event.currentTarget)onClose()}}>
     <form className="modal" onSubmit={submit}>
-      <div className="modal-head"><div><span className="eyebrow">ALTA RÁPIDA</span><h2>Nuevo negocio</h2></div><button className="icon-button" type="button" onClick={onClose}><X size={16}/></button></div>
-      <label>Contacto<input autoFocus value={name} onChange={event=>setName(event.target.value)} placeholder="Nombre y apellido" required/></label>
-      <div className="form-grid"><label>Empresa<input value={company} onChange={event=>setCompany(event.target.value)} placeholder="Opcional"/></label><label>Teléfono<input value={phone} onChange={event=>setPhone(event.target.value)} placeholder="11..."/></label></div>
-      <label>Email<input type="email" value={email} onChange={event=>setEmail(event.target.value)} placeholder="Opcional"/></label>
-      <div className="form-grid"><label>Negocio<input value={dealTitle} onChange={event=>setDealTitle(event.target.value)} required/></label><label>Valor estimado<input type="number" min="0" step="1000" value={value} onChange={event=>setValue(event.target.value)} placeholder="0"/></label></div>
-      <div className="modal-actions"><button type="button" className="ghost" onClick={onClose}>Cancelar</button><button className="primary" type="submit">Guardar negocio</button></div>
+      <div className="modal-head"><div><span className="eyebrow">ALTA RÁPIDA</span><h2>Nuevo negocio</h2></div><button className="icon-button" type="button" aria-label="Cerrar" onClick={onClose}><X size={16}/></button></div>
+      <p className="modal-hint">Con nombre o empresa alcanza. Sumá WhatsApp ahora y completá el resto después.</p>
+      <label>Nombre o empresa<input autoFocus autoComplete="organization" enterKeyHint="next" value={company} onChange={event=>setCompany(event.target.value)} placeholder="Ej. Panadería Roma" required/></label>
+      <label>Teléfono / WhatsApp<input type="tel" inputMode="tel" autoComplete="tel" enterKeyHint="done" value={phone} onChange={event=>setPhone(event.target.value)} placeholder="11 2345 6789"/></label>
+      <details className="form-details">
+        <summary>Más datos · opcional</summary>
+        <label>Persona de contacto<input autoComplete="name" value={name} onChange={event=>setName(event.target.value)} placeholder="Ej. Juan Pérez"/></label>
+        <label>Email<input type="email" inputMode="email" autoComplete="email" value={email} onChange={event=>setEmail(event.target.value)} placeholder="nombre@empresa.com"/></label>
+        <div className="form-grid"><label>Negocio / oportunidad<input value={dealTitle} onChange={event=>setDealTitle(event.target.value)} placeholder={company||'Ej. Venta web'}/></label><label>Valor estimado<input type="number" inputMode="numeric" min="0" step="1000" value={value} onChange={event=>setValue(event.target.value)} placeholder="0"/></label></div>
+      </details>
+      <div className="modal-actions"><button type="button" className="ghost" onClick={onClose}>Cancelar</button><button className="primary" type="submit"><Plus size={16}/> Guardar negocio</button></div>
     </form>
   </div>
 }
@@ -139,7 +150,7 @@ function Contacts(){
   const [q,setQ]=useState('');
   const filtered=contacts.filter(contact=>(contact.name+contact.company+contact.email+contact.phone).toLowerCase().includes(q.toLowerCase()));
   return <section className="panel wide">
-    <div className="panel-title"><div><span className="eyebrow">AGENDA</span><h2>Contactos</h2></div><div className="search"><Search size={17}/><input placeholder="Buscar contacto..." value={q} onChange={event=>setQ(event.target.value)}/></div></div>
+    <div className="panel-title"><div><span className="eyebrow">AGENDA</span><h2>Contactos</h2></div><div className="search"><Search size={17}/><input inputMode="search" enterKeyHint="search" placeholder="Buscar contacto..." value={q} onChange={event=>setQ(event.target.value)}/></div></div>
     {!contacts.length?<Empty>Sin contactos. Cargá tu primer negocio desde el botón superior.</Empty>:!filtered.length?<Empty>No hay resultados para “{q}”.</Empty>:<div className="contact-list">{filtered.map(contact=><article className="contact" key={contact.id}><div className="avatar large">{contact.name.split(' ').map(part=>part[0]).join('').slice(0,2)}</div><div><b>{contact.name}</b><p>{contact.company||'Sin empresa'}{contact.email?` · ${contact.email}`:''}</p><small>{deals.filter(deal=>deal.contactId===contact.id).length} negocios · {tasks.filter(task=>task.contactId===contact.id&&!task.done).length} tareas pendientes</small></div><NavLink className="link" to={`/t/${tenant}/contacts/${contact.id}`}>Ver detalle →</NavLink></article>)}</div>}
   </section>
 }
@@ -164,7 +175,9 @@ function ContactDetail(){
 function Tasks(){
   const {tasks,toggleTask,contacts}=useCrm();
   const [filter,setFilter]=useState<'all'|'pending'|'done'>('pending');
-  const [adding,setAdding]=useState(false);
+  const [params,setParams]=useSearchParams();
+  const adding=params.get('new')==='1';
+  const setAdding=(open:boolean)=>{const next=new URLSearchParams(params);if(open)next.set('new','1');else next.delete('new');setParams(next,{replace:!open})};
   const visible=tasks.filter(task=>filter==='all'||filter==='done'&&task.done||filter==='pending'&&!task.done);
   return <>
     <section className="panel wide">
@@ -184,15 +197,16 @@ function TaskModal({open,onClose}:{open:boolean;onClose:()=>void}){
   const submit=(event:FormEvent)=>{
     event.preventDefault();
     if(!title.trim())return;
-    addTask({title,dueDate,contactId:contactId||undefined});
+    addTask({title:title.trim(),dueDate,contactId:contactId||undefined});
     setTitle('');setDueDate(tomorrow());setContactId('');onClose();
   };
   return <div className="modal-backdrop" onMouseDown={event=>{if(event.target===event.currentTarget)onClose()}}>
     <form className="modal compact" onSubmit={submit}>
-      <div className="modal-head"><div><span className="eyebrow">SEGUIMIENTO</span><h2>Nueva tarea</h2></div><button className="icon-button" type="button" onClick={onClose}><X size={16}/></button></div>
-      <label>Tarea<input autoFocus value={title} onChange={event=>setTitle(event.target.value)} placeholder="Ej. Llamar a Juan" required/></label>
-      <label>Contacto<select value={contactId} onChange={event=>setContactId(event.target.value)}><option value="">Sin contacto</option>{contacts.map(contact=><option key={contact.id} value={contact.id}>{contact.name}</option>)}</select></label>
+      <div className="modal-head"><div><span className="eyebrow">SEGUIMIENTO</span><h2>Nueva tarea</h2></div><button className="icon-button" type="button" aria-label="Cerrar" onClick={onClose}><X size={16}/></button></div>
+      <label>Tarea<input autoFocus enterKeyHint="done" value={title} onChange={event=>setTitle(event.target.value)} placeholder="Ej. Escribir a Juan" required/></label>
+      <div className="date-shortcuts"><button type="button" className={dueDate===today()?'secondary':'ghost'} onClick={()=>setDueDate(today())}>Hoy</button><button type="button" className={dueDate===tomorrow()?'secondary':'ghost'} onClick={()=>setDueDate(tomorrow())}>Mañana</button></div>
       <label>Fecha<input type="date" value={dueDate} onChange={event=>setDueDate(event.target.value)} required/></label>
+      <label>Contacto<select value={contactId} onChange={event=>setContactId(event.target.value)}><option value="">Sin contacto</option>{contacts.map(contact=><option key={contact.id} value={contact.id}>{contact.name}</option>)}</select></label>
       <div className="modal-actions"><button type="button" className="ghost" onClick={onClose}>Cancelar</button><button className="primary" type="submit">Guardar tarea</button></div>
     </form>
   </div>
