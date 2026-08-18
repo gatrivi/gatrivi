@@ -36,17 +36,44 @@ const inputStyle={width:'100%',minHeight:42,border:'1px solid #d6d3d1',borderRad
 const labelStyle={display:'grid',gap:6,fontSize:12,fontWeight:700} as const;
 const gridStyle={display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))',gap:12} as const;
 
-function whatsappUrl(phone:string){
+function webUrl(raw:string){
+  try{
+    const url=new URL(raw.trim());
+    return url.protocol==='https:'||url.protocol==='http:'?url.href:'';
+  }catch{return ''}
+}
+
+function argentineWhatsappDigits(phone:string){
   let digits=phone.replace(/\D/g,'');
-  if(digits.startsWith('0'))digits=digits.slice(1);
-  if(digits&&!digits.startsWith('54')&&digits.length>=10)digits=`54${digits}`;
+  if(!digits)return '';
+  if(digits.startsWith('00'))digits=digits.slice(2);
+  if(digits.startsWith('549')&&digits.length===13)return digits;
+
+  let national=digits.startsWith('54')?digits.slice(2):digits;
+  if(national.startsWith('0'))national=national.slice(1);
+  if(national.startsWith('9')&&national.length===11)return `54${national}`;
+
+  // Local mobile format: 011 15 1234 5678 / 0341 15 1234567.
+  for(let areaLength=2;areaLength<=4;areaLength++){
+    if(national.slice(areaLength,areaLength+2)==='15'&&national.length-2===10){
+      return `549${national.slice(0,areaLength)}${national.slice(areaLength+2)}`;
+    }
+  }
+
+  // Keep valid 10-digit national numbers; WhatsApp Business may use fixed lines too.
+  if(national.length===10)return `54${national}`;
+  return '';
+}
+
+function whatsappUrl(phone:string){
+  const digits=argentineWhatsappDigits(phone);
   return digits?`https://wa.me/${digits}`:'';
 }
 
 function instagramUrl(handle:string|undefined,sourceUrl:string,platform:ProspectPlatform){
   const clean=(handle??'').trim().replace(/^@/,'');
-  if(clean)return `https://instagram.com/${clean}`;
-  return platform==='instagram'?sourceUrl:'';
+  if(clean)return `https://instagram.com/${encodeURIComponent(clean)}`;
+  return platform==='instagram'?webUrl(sourceUrl):'';
 }
 
 export default function Prospects(){
@@ -86,7 +113,8 @@ export default function Prospects(){
     }catch{setCopied('')}
   };
   const openAndCopy=(key:string,url:string,message:string)=>{
-    window.open(url,'_blank','noopener,noreferrer');
+    const safe=webUrl(url);
+    if(safe)window.open(safe,'_blank','noopener,noreferrer');
     void copy(key,message);
   };
 
@@ -100,7 +128,7 @@ export default function Prospects(){
       email:'',
       value:Number(value)||0,
       prospect:{
-        sourceUrl:sourceUrl.trim(),
+        sourceUrl:webUrl(sourceUrl),
         platform,
         socialHandle:socialHandle.trim(),
         area:area.trim()||'Zona Norte',
@@ -188,17 +216,18 @@ export default function Prospects(){
         const nextTask=tasks.filter(task=>task.contactId===contact.id&&!task.done).sort((a,b)=>a.dueDate.localeCompare(b.dueDate))[0];
         const messages=prospect.outreachMessages?.length?prospect.outreachMessages:buildOutreachMessages(contact.company||contact.name,prospect.demoUrl);
         const wa=whatsappUrl(contact.phone);
-        const ig=instagramUrl(prospect.socialHandle,prospect.sourceUrl,prospect.platform as ProspectPlatform);
+        const safeSource=webUrl(prospect.sourceUrl);
+        const ig=instagramUrl(prospect.socialHandle,safeSource,prospect.platform as ProspectPlatform);
         return <div className="note" key={contact.id} style={{display:'grid',gap:10}}>
           <div style={{display:'flex',justifyContent:'space-between',gap:12,alignItems:'flex-start',flexWrap:'wrap'}}>
             <span><b>{contact.company||contact.name}</b><small style={{display:'block'}}>{prospect.socialHandle?`${prospect.socialHandle} · `:''}{prospect.platform} · {prospect.area} · fit {prospect.score}/100</small></span>
-            <label style={{...labelStyle,minWidth:150}}>Etapa<select style={{...inputStyle,minHeight:36}} value={stage?.name??orderedStages[0]?.name??''} onChange={event=>setProspectStage(contact.id,event.target.value)}>{orderedStages.map(item=><option key={item.id} value={item.name}>{item.name}</option>)}</select></label>
+            <label style={{...labelStyle,minWidth:150}}>Etapa<select style={{...inputStyle,minHeight:36}} value={stage?.id??orderedStages[0]?.id??''} onChange={event=>setProspectStage(contact.id,event.target.value)}>{orderedStages.map(item=><option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
           </div>
 
           <small><b>Próxima:</b> {nextTask?`${nextTask.title} · ${nextTask.dueDate}`:'sin acción pendiente'}{prospect.lastContactedAt?` · último contacto ${new Date(prospect.lastContactedAt).toLocaleDateString('es-AR')}`:''}</small>
 
           <div style={{display:'flex',gap:7,flexWrap:'wrap'}}>
-            {prospect.sourceUrl&&<a className="link" href={prospect.sourceUrl} target="_blank" rel="noreferrer">Fuente ↗</a>}
+            {safeSource&&<a className="link" href={safeSource} target="_blank" rel="noreferrer">Fuente ↗</a>}
             <a className="link" href={prospect.demoUrl} target="_blank" rel="noreferrer">Demo ↗</a>
             {ig&&<button className="secondary" type="button" onClick={()=>openAndCopy(`${contact.id}-ig`,ig,messages[0])}><Instagram size={15}/> {copied===`${contact.id}-ig`?'Copiado':'IG + copiar'}</button>}
             {wa&&<button className="secondary" type="button" onClick={()=>openAndCopy(`${contact.id}-wa`,wa,messages[0])}><MessageCircle size={15}/> {copied===`${contact.id}-wa`?'Copiado':'WA + copiar'}</button>}
