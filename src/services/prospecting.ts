@@ -1,5 +1,5 @@
 export type ProspectPlatform='instagram'|'facebook'|'other';
-export type ProspectCategory='gastronomia'|'pizzeria'|'rotiseria'|'cafeteria'|'panaderia'|'polleria'|'verduleria'|'libreria'|'grafica'|'distribuidora-lacteos'|'molino-mayorista'|'almacen'|'dietetica'|'petshop';
+export type ProspectCategory='gastronomia'|'pizzeria'|'rotiseria'|'cafeteria'|'panaderia'|'polleria'|'verduleria'|'carniceria'|'reposteria'|'libreria'|'grafica'|'distribuidora-lacteos'|'molino-mayorista'|'almacen'|'dietetica'|'petshop';
 export type ProspectColor='carbon'|'coral'|'verde'|'azul'|'violeta';
 
 export interface ProspectSignals {
@@ -31,6 +31,8 @@ export const prospectCategories:Record<ProspectCategory,string>={
   panaderia:'Panadería',
   polleria:'Pollería',
   verduleria:'Verdulería',
+  carniceria:'Carnicería',
+  reposteria:'Repostería',
   libreria:'Librería',
   grafica:'Gráfica / imprenta',
   'distribuidora-lacteos':'Distribuidora de lácteos',
@@ -61,12 +63,27 @@ export function scoreProspect(signals:ProspectSignals):ProspectScore {
 
 const tmmBase=()=>((import.meta.env.VITE_TMM_BASE_URL as string|undefined)?.trim()||'https://tmm.gatrivi.com').replace(/\/$/,'');
 
+const publicDemoRoute:Partial<Record<ProspectCategory,string>>={
+  gastronomia:'/demo/pizzeria',
+  pizzeria:'/demo/pizzeria',
+  rotiseria:'/demo/pizzeria',
+  polleria:'/demo/pizzeria',
+  cafeteria:'/demo/panaderia',
+  panaderia:'/demo/panaderia',
+  verduleria:'/demo/verduleria',
+  carniceria:'/demo/carniceria',
+  reposteria:'/demo/mamabel',
+  almacen:'/demo/aguacats',
+  dietetica:'/demo/aguacats',
+};
+
 function demoSearch(input:DemoInput){
   const params=new URLSearchParams({
     negocio:input.businessName.trim(),
     barrio:input.area.trim()||'Zona Norte',
     rubro:input.category,
     color:input.color,
+    origen:'crm',
   });
   return `?${params.toString()}`;
 }
@@ -74,14 +91,17 @@ function demoSearch(input:DemoInput){
 export function buildDemoLinks(input:DemoInput){
   const search=demoSearch(input);
   const base=tmmBase();
+  const route=publicDemoRoute[input.category]??'/demos';
+  const customerUrl=`${base}${route}${search}`;
+  const ownerRoute=route.startsWith('/demo/')?`${route}/owner`:'/demos';
   return {
-    builderUrl:`${base}/demo/armar${search}`,
-    customerUrl:`${base}/demo${search}`,
-    ownerUrl:`${base}/demo/owner${search}`,
+    builderUrl:`${base}/demos${search}`,
+    customerUrl,
+    ownerUrl:`${base}${ownerRoute}${search}`,
   };
 }
 
 export function buildOutreachMessage(businessName:string,customerUrl:string){
   const name=businessName.trim()||'tu negocio';
-  return `Hola. Vi ${name} y armé una muestra rápida de cómo podría verse con catálogo y pedidos directos:\n${customerUrl}\n\nEs una demo visual con productos de ejemplo. Si te sirve, la adapto a tus productos reales.`;
+  return `Hola. Vi ${name} y armé una muestra rápida del tipo de tienda que podría funcionar para ustedes:\n${customerUrl}\n\nEs una demo visual con productos de ejemplo. Si te sirve, la adapto a tus productos reales.`;
 }
