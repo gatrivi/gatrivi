@@ -1,10 +1,11 @@
 import {Navigate,NavLink,Route,Routes,useNavigate,useParams,useSearchParams} from 'react-router-dom';
-import {BarChart3,BriefcaseBusiness,CheckSquare,ContactRound,Edit3,LogOut,Plus,Search,Target,X} from 'lucide-react';
+import {BarChart3,BriefcaseBusiness,CheckSquare,ContactRound,Edit3,LogOut,MessageCircle,Plus,Search,Target,X} from 'lucide-react';
 import {CrmProvider,useCrm} from './context/CrmContext';
-import {authenticate,getSession,signOut,startSession} from './services/auth';
+import {authenticate,getSession,listWorkspaceUsers,signOut,startSession,type WorkspaceUser} from './services/auth';
 import {registerCrmPwa} from './services/pwa';
 import Prospects from './Prospects';
 import ShareTarget from './ShareTarget';
+import Collaboration from './Collaboration';
 import {useEffect,useState,type DragEvent,type FormEvent,type ReactNode} from 'react';
 
 const money=(n:number)=>new Intl.NumberFormat('es-AR',{style:'currency',currency:'ARS',maximumFractionDigits:0}).format(n);
@@ -17,24 +18,30 @@ function Shell({children}:{children:ReactNode}){
   const {tenant,persistenceError}=useCrm();
   const navigate=useNavigate();
   const session=getSession();
-  const nav=[['dashboard','Resumen',BarChart3],['pipeline','Pipeline',BriefcaseBusiness],['prospects','Prospectos',Target],['contacts','Contactos',ContactRound],['tasks','Tareas',CheckSquare]] as const;
+  const nav=tenant==='personal'
+    ? [['dashboard','Resumen',BarChart3],['tasks','Tareas',CheckSquare],['collab','Equipo',MessageCircle]] as const
+    : tenant==='jobs'
+      ? [['dashboard','Resumen',BarChart3],['pipeline','Pipeline',BriefcaseBusiness],['contacts','Contactos',ContactRound],['tasks','Tareas',CheckSquare]] as const
+      : [['dashboard','Resumen',BarChart3],['pipeline','Pipeline',BriefcaseBusiness],['prospects','Prospectos',Target],['contacts','Contactos',ContactRound],['tasks','Tareas',CheckSquare],['collab','Equipo',MessageCircle]] as const;
   const name=session?.name??'Vos';
   const initials=name.split(' ').map(part=>part[0]).join('').slice(0,2).toUpperCase();
   return <div className="app">
     <aside>
-      <div className="brand"><span>✦</span> GATRIVI CRM</div>
+      <div className="brand"><span>✦</span> GATRIVI BPM</div>
       <p className="tenant">ESPACIO DE TRABAJO<br/><b>{tenant}</b></p>
       <nav>{nav.map(([to,label,Icon])=><NavLink key={to} to={`/t/${tenant}/${to}`} className={({isActive})=>isActive?'active':''}><Icon size={18}/>{label}</NavLink>)}</nav>
       <div className="aside-bottom">
         <div className="avatar">{initials}</div>
-        <div><b>{name}</b><small>Equipo comercial</small></div>
+        <div><b>{name}</b><small>{tenant==='personal'?'Vida personal':'Equipo comercial'}</small></div>
         <button className="logout-button" type="button" title="Cerrar sesión" onClick={()=>{signOut();navigate('/login',{replace:true})}}><LogOut size={17}/></button>
       </div>
     </aside>
     <main>
       <header>
         <div><span className="eyebrow">{todayLabel()}</span><h1>Buen día, {name}</h1></div>
-        <button className="primary" onClick={()=>navigate(`/t/${tenant}/pipeline?new=1`)}><Plus size={17}/> Nuevo negocio</button>
+        {tenant==='personal'
+          ? <button className="primary" onClick={()=>navigate(`/t/${tenant}/tasks`)}><CheckSquare size={17}/> Ver tareas</button>
+          : <button className="primary" onClick={()=>navigate(`/t/${tenant}/pipeline?new=1`)}><Plus size={17}/> Nuevo negocio</button>}
       </header>
       {persistenceError&&<div className="warning">{persistenceError}</div>}
       {children}
@@ -43,7 +50,31 @@ function Shell({children}:{children:ReactNode}){
 }
 
 function Dashboard(){
-  const {contacts,deals,tasks,stages,tenant}=useCrm();
+  const {contacts,deals,tasks,stages,tenant,messages,proposals}=useCrm();
+  const session=getSession();
+  if(tenant==='personal'){
+    const mine=tasks.filter(task=>!task.done&&(!task.assigneeUsername||task.assigneeUsername===session?.username));
+    const chats=messages.filter(item=>item.fromUsername===session?.username||item.toUsername===session?.username||item.toUsername==='all');
+    const pending=proposals.filter(item=>item.status==='pending'&&item.recipientUsername===session?.username);
+    return <>
+      <div className="stats">
+        <Stat label="Mis tareas" value={String(mine.length)} note="pendientes"/>
+        <Stat label="Tareas del grupo" value={String(tasks.filter(task=>!task.done).length)} note="pendientes"/>
+        <Stat label="Mensajes" value={String(chats.length)} note="conversaciones"/>
+        <Stat label="Propuestas" value={String(pending.length)} note="para decidir"/>
+      </div>
+      <div className="grid-2">
+        <section className="panel">
+          <div className="panel-title"><div><span className="eyebrow">HOY</span><h2>Tus tareas</h2></div><NavLink to={`/t/${tenant}/tasks`} className="link">Ver todo →</NavLink></div>
+          <TaskRows limit={6}/>
+        </section>
+        <section className="panel">
+          <div className="panel-title"><div><span className="eyebrow">COORDINACIÓN</span><h2>Equipo</h2></div><NavLink to={`/t/${tenant}/collab`} className="link">Abrir →</NavLink></div>
+          <p>Mensajes, propuestas de cambios y tareas compartidas entre el grupo.</p>
+        </section>
+      </div>
+    </>;
+  }
   return <>
     <div className="stats">
       <Stat label="Negocios activos" value={String(deals.filter(deal=>stages.find(stage=>stage.id===deal.stageId)?.name!=='Perdido').length)} note="en tu pipeline"/>
@@ -61,16 +92,19 @@ function Dashboard(){
         <TaskRows limit={4}/>
       </section>
     </div>
-  </>
+  </>;
 }
 
 function Stat({label,value,note}:{label:string;value:string;note:string}){return <div className="stat"><span>{label}</span><strong>{value}</strong><small>{note}</small></div>}
 
 function TaskRows({limit}:{limit:number}){
-  const {tasks,toggleTask}=useCrm();
-  const pending=tasks.filter(task=>!task.done).slice(0,limit);
+  const {tasks,toggleTask,tenant}=useCrm();
+  const session=getSession();
+  const pending=tasks
+    .filter(task=>!task.done&&(tenant!=='personal'||!task.assigneeUsername||task.assigneeUsername===session?.username))
+    .slice(0,limit);
   if(!pending.length)return <Empty>No tenés tareas pendientes.</Empty>;
-  return <div>{pending.map(task=><label className="task" key={task.id}><input type="checkbox" checked={task.done} onChange={()=>toggleTask(task.id)}/><span>{task.title}</span><small>{task.dueDate}</small></label>)}</div>;
+  return <div>{pending.map(task=><label className="task" key={task.id}><input type="checkbox" checked={task.done} onChange={()=>toggleTask(task.id)}/><span>{task.title}</span><small>{task.assigneeUsername?`@${task.assigneeUsername} · `:''}{task.dueDate}</small></label>)}</div>;
 }
 
 function Pipeline(){
@@ -103,7 +137,7 @@ function Pipeline(){
       })}</div>
     </section>
     <QuickLeadModal open={modalOpen} onClose={closeModal}/>
-  </>
+  </>;
 }
 
 function QuickLeadModal({open,onClose}:{open:boolean;onClose:()=>void}){
@@ -131,7 +165,7 @@ function QuickLeadModal({open,onClose}:{open:boolean;onClose:()=>void}){
       <div className="form-grid"><label>Negocio<input value={dealTitle} onChange={event=>setDealTitle(event.target.value)} required/></label><label>Valor estimado<input type="number" min="0" step="1000" value={value} onChange={event=>setValue(event.target.value)} placeholder="0"/></label></div>
       <div className="modal-actions"><button type="button" className="ghost" onClick={onClose}>Cancelar</button><button className="primary" type="submit">Guardar negocio</button></div>
     </form>
-  </div>
+  </div>;
 }
 
 function Contacts(){
@@ -141,7 +175,7 @@ function Contacts(){
   return <section className="panel wide">
     <div className="panel-title"><div><span className="eyebrow">AGENDA</span><h2>Contactos</h2></div><div className="search"><Search size={17}/><input placeholder="Buscar contacto..." value={q} onChange={event=>setQ(event.target.value)}/></div></div>
     {!contacts.length?<Empty>Sin contactos. Cargá tu primer negocio desde el botón superior.</Empty>:!filtered.length?<Empty>No hay resultados para “{q}”.</Empty>:<div className="contact-list">{filtered.map(contact=><article className="contact" key={contact.id}><div className="avatar large">{contact.name.split(' ').map(part=>part[0]).join('').slice(0,2)}</div><div><b>{contact.name}</b><p>{contact.company||'Sin empresa'}{contact.email?` · ${contact.email}`:''}</p><small>{deals.filter(deal=>deal.contactId===contact.id).length} negocios · {tasks.filter(task=>task.contactId===contact.id&&!task.done).length} tareas pendientes</small></div><NavLink className="link" to={`/t/${tenant}/contacts/${contact.id}`}>Ver detalle →</NavLink></article>)}</div>}
-  </section>
+  </section>;
 }
 
 function ContactDetail(){
@@ -158,7 +192,7 @@ function ContactDetail(){
     {contact.prospect&&<><h3>Prospecto TMM · {contact.prospect.score}/100</h3><div className="stage-row"><span>{contact.prospect.socialHandle?`${contact.prospect.socialHandle} · `:''}{contact.prospect.scoreReasons.join(' · ')}</span><a className="link" href={contact.prospect.demoUrl} target="_blank" rel="noreferrer">Abrir demo →</a></div></>}
     <h3>Negocios vinculados</h3>{linkedDeals.length?linkedDeals.map(deal=><div className="stage-row" key={deal.id}><span>{deal.title}</span><b>{money(deal.value)}</b></div>):<Empty>Sin negocios vinculados.</Empty>}
     <h3>Tareas vinculadas</h3>{linkedTasks.length?linkedTasks.map(task=><div className="stage-row" key={task.id}><span>{task.title}</span><b>{task.done?'Lista':'Pendiente'}</b></div>):<Empty>Sin tareas vinculadas.</Empty>}
-  </section>
+  </section>;
 }
 
 function Tasks(){
@@ -169,33 +203,43 @@ function Tasks(){
   return <>
     <section className="panel wide">
       <div className="panel-title"><div><span className="eyebrow">ORGANIZACIÓN</span><h2>Tareas</h2></div><div className="panel-actions"><div className="tabs">{(['pending','done','all'] as const).map(item=><button className={filter===item?'selected':''} onClick={()=>setFilter(item)} key={item}>{item==='pending'?'Pendientes':item==='done'?'Hechas':'Todas'}</button>)}</div><button className="secondary" onClick={()=>setAdding(true)}><Plus size={16}/> Nueva tarea</button></div></div>
-      {visible.length?visible.map(task=><label className="task full" key={task.id}><input type="checkbox" checked={task.done} onChange={()=>toggleTask(task.id)}/><span className={task.done?'completed':''}>{task.title}</span><small>{task.contactId?contacts.find(contact=>contact.id===task.contactId)?.name+' · ':''}{task.dueDate}</small></label>):<Empty>No hay tareas en esta vista.</Empty>}
+      {visible.length?visible.map(task=><label className="task full" key={task.id}><input type="checkbox" checked={task.done} onChange={()=>toggleTask(task.id)}/><span className={task.done?'completed':''}>{task.title}</span><small>{task.assigneeUsername?`@${task.assigneeUsername} · `:''}{task.contactId?contacts.find(contact=>contact.id===task.contactId)?.name+' · ':''}{task.dueDate}</small></label>):<Empty>No hay tareas en esta vista.</Empty>}
     </section>
     <TaskModal open={adding} onClose={()=>setAdding(false)}/>
-  </>
+  </>;
 }
 
 function TaskModal({open,onClose}:{open:boolean;onClose:()=>void}){
-  const {addTask,contacts}=useCrm();
+  const {addTask,contacts,tenant}=useCrm();
   const [title,setTitle]=useState('');
   const [dueDate,setDueDate]=useState(tomorrow());
   const [contactId,setContactId]=useState('');
+  const [assigneeUsername,setAssigneeUsername]=useState(getSession()?.username??'');
+  const [members,setMembers]=useState<WorkspaceUser[]>([]);
+  useEffect(()=>{
+    if(!open)return;
+    listWorkspaceUsers(tenant).then(next=>{
+      setMembers(next);
+      if(!assigneeUsername&&next[0])setAssigneeUsername(next[0].username);
+    });
+  },[open,tenant]);
   if(!open)return null;
   const submit=(event:FormEvent)=>{
     event.preventDefault();
     if(!title.trim())return;
-    addTask({title,dueDate,contactId:contactId||undefined});
+    addTask({title,dueDate,contactId:contactId||undefined,assigneeUsername:assigneeUsername||undefined});
     setTitle('');setDueDate(tomorrow());setContactId('');onClose();
   };
   return <div className="modal-backdrop" onMouseDown={event=>{if(event.target===event.currentTarget)onClose()}}>
     <form className="modal compact" onSubmit={submit}>
       <div className="modal-head"><div><span className="eyebrow">SEGUIMIENTO</span><h2>Nueva tarea</h2></div><button className="icon-button" type="button" onClick={onClose}><X size={16}/></button></div>
       <label>Tarea<input autoFocus value={title} onChange={event=>setTitle(event.target.value)} placeholder="Ej. Llamar a Juan" required/></label>
-      <label>Contacto<select value={contactId} onChange={event=>setContactId(event.target.value)}><option value="">Sin contacto</option>{contacts.map(contact=><option key={contact.id} value={contact.id}>{contact.name}</option>)}</select></label>
+      {contacts.length>0&&<label>Contacto<select value={contactId} onChange={event=>setContactId(event.target.value)}><option value="">Sin contacto</option>{contacts.map(contact=><option key={contact.id} value={contact.id}>{contact.name}</option>)}</select></label>}
+      {members.length>0&&<label>Asignar a<select value={assigneeUsername} onChange={event=>setAssigneeUsername(event.target.value)}>{members.map(member=><option key={member.username} value={member.username}>{member.name}</option>)}</select></label>}
       <label>Fecha<input type="date" value={dueDate} onChange={event=>setDueDate(event.target.value)} required/></label>
       <div className="modal-actions"><button type="button" className="ghost" onClick={onClose}>Cancelar</button><button className="primary" type="submit">Guardar tarea</button></div>
     </form>
-  </div>
+  </div>;
 }
 
 function Login(){
@@ -215,15 +259,15 @@ function Login(){
     navigate(safeNext??`/t/${user.tenant}/dashboard`,{replace:true});
   };
   return <div className="login"><form className="login-card" onSubmit={submit}>
-    <div className="brand"><span>✦</span> GATRIVI CRM</div>
+    <div className="brand"><span>✦</span> GATRIVI BPM</div>
     <h1>Entrá a tu espacio</h1>
-    <p>Contactos, negocios y próximos pasos sin vueltas.</p>
+    <p>Trabajo y vida personal sobre el mismo motor.</p>
     <input className="login-input" autoComplete="username" placeholder="Usuario" value={username} onChange={event=>setUsername(event.target.value)}/>
     <input className="login-input" autoComplete="current-password" type="password" placeholder="Contraseña" value={password} onChange={event=>setPassword(event.target.value)}/>
     {error&&<p className="error">{error}</p>}
     <button className="primary full-button" type="submit">Entrar</button>
-    <small className="login-help">Usuarios de prueba: gaston / fausto</small>
-  </form></div>
+    <small className="login-help">Usuarios: gaston · pau · rodri · faus</small>
+  </form></div>;
 }
 
 function TenantApp(){
@@ -231,7 +275,7 @@ function TenantApp(){
   const session=getSession();
   if(!session)return <Navigate to="/login" replace/>;
   if(slug!==session.tenant)return <Navigate to={`/t/${session.tenant}/dashboard`} replace/>;
-  return <CrmProvider tenant={session.tenant}><Shell><Routes><Route path="dashboard" element={<Dashboard/>}/><Route path="pipeline" element={<Pipeline/>}/><Route path="prospects" element={<Prospects/>}/><Route path="contacts" element={<Contacts/>}/><Route path="contacts/:id" element={<ContactDetail/>}/><Route path="tasks" element={<Tasks/>}/><Route path="*" element={<Navigate to="dashboard" replace/>}/></Routes></Shell></CrmProvider>
+  return <CrmProvider tenant={session.tenant}><Shell><Routes><Route path="dashboard" element={<Dashboard/>}/><Route path="pipeline" element={<Pipeline/>}/><Route path="prospects" element={<Prospects/>}/><Route path="contacts" element={<Contacts/>}/><Route path="contacts/:id" element={<ContactDetail/>}/><Route path="tasks" element={<Tasks/>}/><Route path="collab" element={<Collaboration/>}/><Route path="*" element={<Navigate to="dashboard" replace/>}/></Routes></Shell></CrmProvider>;
 }
 
 function HomeRedirect(){const session=getSession();return <Navigate to={session?`/t/${session.tenant}/dashboard`:'/login'} replace/>}

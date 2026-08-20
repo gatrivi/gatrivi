@@ -1,0 +1,20 @@
+.collab-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:18px}
+.collab-wide{grid-column:1/-1}
+.panel-title h2{display:flex;align-items:center;gap:8px}
+.member-list,.feed{display:grid;gap:10px}
+.member-row{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border,#e5e7eb)}
+.member-row small,.feed-card small{display:block;opacity:.65}
+.stack-form,.create-user{display:grid;gap:12px;margin-bottom:16px}
+.stack-form textarea,.create-user input,.stack-form input,.stack-form select,.create-user select{width:100%}
+.feed{max-height:420px;overflow:auto}
+.feed-card{padding:12px;border:1px solid var(--border,#e5e7eb);border-radius:12px}
+.feed-card>div:first-child{display:flex;gap:5px;align-items:baseline;flex-wrap:wrap}
+.feed-card>div:first-child small{margin-left:auto}
+.feed-card p{margin:8px 0;white-space:pre-wrap}
+.proposal-layout{display:grid;grid-template-columns:minmax(260px,.75fr) minmax(0,1.25fr);gap:18px}
+.proposal-status{display:inline-flex;margin-top:8px;padding:4px 8px;border-radius:999px;font-size:12px;font-weight:700;background:#e5e7eb}
+.proposal-status.accepted{background:#dcfce7}.proposal-status.rejected{background:#fee2e2}
+.decision-actions{display:flex;gap:8px;margin-top:10px}
+.workspace-checks{display:flex;gap:16px;flex-wrap:wrap}.workspace-checks label{display:flex;align-items:center;gap:6px}
+.success-note{font-size:13px;color:#15803d}.empty-inline{opacity:.65}
+@media(max-width:760px){.collab-grid,.proposal-layout{grid-template-columns:1fr}.collab-wide{grid-column:auto}.feed{max-height:none}}

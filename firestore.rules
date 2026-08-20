@@ -1,8 +1,83 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /{collection}/{id} {
-      allow read, write: if request.auth != null && request.resource.data.tenantId == request.auth.token.tenantId;
+    function signedIn() {
+      return request.auth != null;
+    }
+    function me() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+    function isAdmin() {
+      return signedIn() && me().data.role == 'admin';
+    }
+    function hasTenant(tenant) {
+      return signedIn() && me().data.tenants.hasAny([tenant]);
+    }
+    function validBootstrap(uid) {
+      return request.auth.uid == uid
+        && request.resource.data.uid == uid
+        && (
+          (request.auth.token.email == 'gaston@users.gatrivi.local'
+            && request.resource.data.username == 'gaston'
+            && request.resource.data.role == 'member'
+            && request.resource.data.tenants == ['gatrivi', 'personal', 'jobs'])
+          || (request.auth.token.email == 'pau@users.gatrivi.local'
+            && request.resource.data.username == 'pau'
+            && request.resource.data.role == 'member'
+            && request.resource.data.tenants == ['personal'])
+          || (request.auth.token.email == 'rodri@users.gatrivi.local'
+            && request.resource.data.username == 'rodri'
+            && request.resource.data.role == 'member'
+            && request.resource.data.tenants == ['personal'])
+          || (request.auth.token.email == 'faus@users.gatrivi.local'
+            && request.resource.data.username == 'faus'
+            && request.resource.data.role == 'admin'
+            && request.resource.data.tenants == ['gatrivi'])
+        );
+    }
+
+    match /users/{uid} {
+      allow create: if signedIn() && (validBootstrap(uid) || (isAdmin() && request.resource.data.role == 'member'));
+      allow read: if signedIn() && (isAdmin() || uid == request.auth.uid || resource.data.tenants.hasAny(me().data.tenants));
+      allow update, delete: if isAdmin();
+    }
+
+    match /contacts/{id} {
+      allow read: if hasTenant(resource.data.tenantId);
+      allow create: if hasTenant(request.resource.data.tenantId);
+      allow update: if hasTenant(resource.data.tenantId) && request.resource.data.tenantId == resource.data.tenantId;
+      allow delete: if hasTenant(resource.data.tenantId);
+    }
+    match /stages/{id} {
+      allow read: if hasTenant(resource.data.tenantId);
+      allow create: if hasTenant(request.resource.data.tenantId);
+      allow update: if hasTenant(resource.data.tenantId) && request.resource.data.tenantId == resource.data.tenantId;
+      allow delete: if hasTenant(resource.data.tenantId);
+    }
+    match /deals/{id} {
+      allow read: if hasTenant(resource.data.tenantId);
+      allow create: if hasTenant(request.resource.data.tenantId);
+      allow update: if hasTenant(resource.data.tenantId) && request.resource.data.tenantId == resource.data.tenantId;
+      allow delete: if hasTenant(resource.data.tenantId);
+    }
+    match /tasks/{id} {
+      allow read: if hasTenant(resource.data.tenantId);
+      allow create: if hasTenant(request.resource.data.tenantId);
+      allow update: if hasTenant(resource.data.tenantId) && request.resource.data.tenantId == resource.data.tenantId;
+      allow delete: if hasTenant(resource.data.tenantId);
+    }
+    match /messages/{id} {
+      allow read: if hasTenant(resource.data.tenantId);
+      allow create: if hasTenant(request.resource.data.tenantId) && request.resource.data.fromUsername == me().data.username;
+      allow update, delete: if false;
+    }
+    match /proposals/{id} {
+      allow read: if hasTenant(resource.data.tenantId);
+      allow create: if hasTenant(request.resource.data.tenantId) && request.resource.data.createdBy == me().data.username;
+      allow update: if hasTenant(resource.data.tenantId)
+        && request.resource.data.tenantId == resource.data.tenantId
+        && (me().data.username == resource.data.recipientUsername || me().data.username == resource.data.createdBy);
+      allow delete: if false;
     }
   }
 }
