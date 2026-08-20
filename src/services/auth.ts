@@ -19,7 +19,7 @@ export async function sha256(value:string):Promise<string>{
 export async function authenticate(username:string,password:string):Promise<SessionUser|null>{
   const normalized=username.trim().toLowerCase();
   const testUser=testUsers[normalized];
-  if(testUser&&password==='hlpc') return testUser;
+  if(testUser&&password==='hlpc')return testUser;
 
   const userHash=import.meta.env.VITE_ADMIN_USERNAME_HASH as string|undefined;
   const passHash=import.meta.env.VITE_ADMIN_PASSWORD_HASH as string|undefined;
@@ -61,5 +61,13 @@ export function switchWorkspace(tenant:string):SessionUser|null{
   startSession(next);
   return next;
 }
+
+// Compatibility aliases used by the React workspace/status UI.
+export function getAllowedTenants(username:string){
+  const normalized=username.trim().toLowerCase();
+  return allowedTenants[normalized]??[getSession()?.tenant??'gatrivi'];
+}
+export function switchTenant(tenant:string){return switchWorkspace(tenant)}
+
 export const isAuthenticated=()=>Boolean(getSession());
 export const signOut=()=>localStorage.removeItem(SESSION_KEY);
