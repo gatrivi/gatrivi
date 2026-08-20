@@ -19,6 +19,7 @@ type Ctx=CrmData & {
 
 const Crm=createContext<Ctx|null>(null);
 const id=(prefix:string)=>`${prefix}-${globalThis.crypto?.randomUUID?.()??Date.now().toString(36)}`;
+const datePlusDays=(days:number)=>new Date(Date.now()+days*86400000).toISOString().slice(0,10);
 
 export function CrmProvider({tenant,children}:{tenant:string;children:ReactNode}){
   const repository=useMemo(()=>getRepository(tenant),[tenant]);
@@ -61,7 +62,43 @@ export function CrmProvider({tenant,children}:{tenant:string;children:ReactNode}
       ...data,
       tenant,
       persistenceError,
-      moveDeal:(dealId,stageId)=>setData(current=>current?({...current,deals:current.deals.map(deal=>deal.id===dealId?{...deal,stageId,updatedAt:new Date().toISOString()}:deal)}):current),
+      moveDeal:(dealId,stageId)=>setData(current=>{
+        if(!current)return current;
+        const now=new Date().toISOString();
+        const deal=current.deals.find(item=>item.id===dealId);
+        const stageName=current.stages.find(stage=>stage.id===stageId)?.name;
+        if(!deal)return current;
+
+        const contact=current.contacts.find(item=>item.id===deal.contactId);
+        const company=contact?.company||contact?.name||deal.title;
+        let tasks=current.tasks;
+
+        if(stageName==='DM enviado'){
+          tasks=tasks.map(task=>task.dealId===dealId&&task.title.startsWith('Enviar demo a ')?{...task,done:true}:task);
+          const hasPendingFollowUp=tasks.some(task=>task.dealId===dealId&&!task.done&&task.title.startsWith('Follow-up a '));
+          if(!hasPendingFollowUp){
+            tasks=[...tasks,{
+              id:id('task'),
+              tenantId:tenant,
+              contactId:deal.contactId,
+              dealId,
+              title:`Follow-up a ${company}`,
+              dueDate:datePlusDays(2),
+              done:false,
+            }];
+          }
+        }
+
+        if(stageName==='Respondió'||stageName==='Llamada'||stageName==='Ganado'||stageName==='Perdido'){
+          tasks=tasks.map(task=>task.dealId===dealId&&task.title.startsWith('Follow-up a ')?{...task,done:true}:task);
+        }
+
+        return {
+          ...current,
+          deals:current.deals.map(item=>item.id===dealId?{...item,stageId,updatedAt:now}:item),
+          tasks,
+        };
+      }),
       toggleTask:(taskId)=>setData(current=>current?({...current,tasks:current.tasks.map(task=>task.id===taskId?{...task,done:!task.done}:task)}):current),
       updateStage:(stageId,name)=>setData(current=>current?({...current,stages:current.stages.map(stage=>stage.id===stageId?{...stage,name}:stage)}):current),
       addLead:input=>setData(current=>{
